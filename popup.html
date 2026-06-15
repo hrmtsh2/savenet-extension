@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Pocket Capture</title>
+<style>
+  body {
+    font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+    width: 320px;
+    padding: 12px;
+    font-size: 13px;
+    color: #1a1a1a;
+  }
+  h1 { font-size: 14px; margin: 0 0 8px; }
+  h2 { font-size: 13px; margin: 14px 0 6px; }
+  label { display: block; margin-top: 8px; font-weight: 600; font-size: 12px; }
+  input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px;
+    margin-top: 4px;
+    font-size: 12px;
+  }
+  button {
+    margin-top: 10px;
+    padding: 6px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .status {
+    margin-top: 8px;
+    padding: 8px;
+    border-radius: 6px;
+    background: #f4f4f4;
+  }
+  details { margin-top: 10px; }
+  .log-item {
+    padding: 6px 0;
+    border-bottom: 1px solid #eee;
+    font-size: 12px;
+  }
+  .log-item .platform {
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 10px;
+    color: #666;
+  }
+  .status-tag {
+    float: right;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+  .status-tag.sent { background: #d1f0d8; color: #1b5e20; }
+  .status-tag.queued { background: #fde3cf; color: #8a4b00; }
+  .caption { color: #444; margin-top: 2px; }
+  .link {
+    color: #1a73e8;
+    text-decoration: none;
+    word-break: break-all;
+    font-size: 11px;
+  }
+  .hint { font-size: 11px; color: #888; margin-top: 4px; }
+</style>
+</head>
+<body>
+  <h1>Pocket Capture</h1>
+
+  <div id="status" class="status">Loading...</div>
+
+  <details>
+    <summary>Backend settings (temporary)</summary>
+    <label for="api-base-url">API base URL</label>
+    <input id="api-base-url" placeholder="https://your-app.vercel.app" />
+    <label for="auth-token">Auth token</label>
+    <input id="auth-token" placeholder="paste token here" />
+    <button id="save-config">Save</button>
+    <div class="hint">
+      Stored locally in this browser only. TODO: Will be replaced by Cognito login.
+    </div>
+  </details>
+
+  <button id="flush-queue">Retry queued captures</button>
+  <button id="clear-log">Clear log</button>
+  <h2>Recent captures</h2>
+  <div id="log"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

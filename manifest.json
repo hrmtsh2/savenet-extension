@@ -1,0 +1,34 @@
+{
+    "manifest_version": 3,
+    "name": "Savenet",
+    "version": "0.1.0",
+    "description": "Capture posts as you save/bookmark them on Instagram and X, and forward them to your recommendation engine.",
+    "permissions": ["storage"],
+    "host_permissions": [
+        "https://www.instagram.com/*",
+        "https://x.com/*",
+        "https://twitter.com/*",
+        "https://*.vercel.app/*",
+        "https://webhook.site/*",
+        "http://localhost:3000"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "action": {
+        "default_popup": "popup.html",
+        "default_title": "Savenet"
+    },
+    "content_scripts": [
+        {
+            "matches": ["https://www.instagram.com/*"],
+            "js": ["common.js", "instagram.js"],
+            "run_at": "document_idle"
+        },
+        {
+            "matches": ["https://x.com/*", "https://twitter.com/*"],
+            "js": ["common.js", "x.js"],
+            "run_at": "document_idle"
+        }
+    ]
+}
