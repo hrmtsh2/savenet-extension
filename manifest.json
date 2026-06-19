@@ -3,13 +3,13 @@
     "name": "Savenet",
     "version": "0.1.0",
     "description": "Capture posts as you save/bookmark them on Instagram and X, and forward them to your recommendation engine.",
-    "permissions": ["storage"],
+    "permissions": ["storage", "identity"],
     "host_permissions": [
         "https://www.instagram.com/*",
         "https://x.com/*",
         "https://twitter.com/*",
-        "https://*.vercel.app/*",
-        "https://webhook.site/*",
+        "https://savenet-app-build.vercel.app/*",
+        "https://achceaepckifblghhnbedcladddiailp.chromiumapp.org/*",
         "http://localhost:3000/*"
     ],
     "background": {

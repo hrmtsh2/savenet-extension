@@ -1,5 +1,17 @@
-function sendMessage(msg){
-  return new Promise((resolve) => chrome.runtime.sendMessage(msg, resolve));
+function sendMessage(msg, attempt = 0){
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage(msg, (response) => {
+      if (chrome.runtime.lastError){
+        if (attempt < 1){
+          setTimeout(() => sendMessage(msg, attempt + 1).then(resolve), 150);
+          return;
+        }
+        resolve(undefined);
+        return;
+      }
+      resolve(response);
+    });
+  });
 }
 
 function escapeHtml(str){
@@ -8,66 +20,91 @@ function escapeHtml(str){
   return div.innerHTML;
 }
 
-async function refreshStatus(){
-  const config = await sendMessage({ type: "get_config" });
-  const { size } = await sendMessage({ type: "get_queue_size" });
-  const statusEl = document.getElementById("status");
+async function render(){
+  const auth = (await sendMessage({ type: "get_auth_state" })) || {};
+  const loggedOutEl = document.getElementById("logged-out");
+  const loggedInEl = document.getElementById("logged-in");
 
-  if (!config.apiBaseUrl){
-    statusEl.textContent = "Not configured. Set an API base URL to start sending captures.";
+  if (auth.loggedIn){
+    loggedOutEl.style.display = "none";
+    loggedInEl.style.display = "flex";
+    document.getElementById("user-email").textContent = auth.email || "";
+    await renderQueueStatus();
+    await renderLog();
   } else {
-    statusEl.textContent = `Connected to ${config.apiBaseUrl}. ${size} capture(s) queued for retrys.`;
+    loggedOutEl.style.display = "flex";
+    loggedInEl.style.display = "none";
   }
-
-  document.getElementById("api-base-url").value = config.apiBaseUrl || "";
-  document.getElementById("auth-token").value = config.authToken || "";
 }
 
-async function refreshLog(){
-  const { log } = await sendMessage({ type: "get_capture_log" });
-  const logEl = document.getElementById("log");
+async function renderQueueStatus(){
+  const { size } = (await sendMessage({ type: "get_queue_size" })) || {};
+  const countEl = document.getElementById("queue-count");
+  const flushBtn = document.getElementById("btn-flush");
 
+  if (size > 0){
+    countEl.textContent = `${size} save${size === 1 ? "" : "s"} pending retry.`;
+    flushBtn.style.display = "inline-block";
+  } else {
+    countEl.textContent = "";
+    flushBtn.style.display = "none";
+  }
+}
+
+async function renderLog(){
+  const { log } = (await sendMessage({ type: "get_capture_log" })) || {};
+  const logEl = document.getElementById("log");
   if (!log || log.length === 0){
-    logEl.innerHTML =
-      '<div class="hint">No captures yet. Save a post on Instagram or bookmark a post on X.</div>';
+    logEl.innerHTML = '<div class="hint">No saves yet. Bookmark a post on Instagram or X first.</div>';
     return;
   }
 
-  logEl.innerHTML = log
-    .map((entry) => {
-      const statusClass = entry.status === "sent" ? "sent" : "queued";
-      return `
-        <div class="log-item">
-          <span class="platform">${escapeHtml(entry.platform)}</span>
-          <span class="status-tag ${statusClass}">${escapeHtml(entry.status)}</span>
-          <div><a class="link" href="${escapeHtml(entry.postUrl)}" target="_blank">${escapeHtml(
-            entry.postUrl
-          )}</a></div>
-          <div class="caption">${escapeHtml(entry.caption || "")}</div>
-        </div>`;
-    })
-    .join("");
+  logEl.innerHTML = log.map((entry) => {
+    const statusClass = entry.status === "sent" ? "sent" : entry.status === "not_logged_in" ? "not_logged_in" : "queued";
+    const statusLabel = entry.status === "sent" ? "sent" : entry.status === "not_logged_in" ? "skipped" : "pending";
+    return `
+      <div class="log-item">
+        <span class="log-platform">${escapeHtml(entry.platform)}</span>
+        <span class="log-status ${statusClass}" href=${escapeHtml(statusLabel)}</span>
+        <a class="log-url" href="${escapeHtml(entry.postUrl)}" target="_blank">${escapeHtml(entry.postUrl)}</a>
+      </div>`;
+  }).join("");
 }
 
-document.getElementById("save-config").addEventListener("click", async () => {
-  const apiBaseUrl = document.getElementById("api-base-url").value.trim();
-  const authToken = document.getElementById("auth-token").value.trim();
-  await sendMessage({ type: "set_config", config: { apiBaseUrl, authToken } });
-  await refreshStatus();
+document.getElementById("btn-login").addEventListener("click", async () => {
+  const btn = document.getElementById("btn-login");
+  btn.textContent = "Logging in...";
+  btn.disabled = true;
+  const result = await sendMessage({ type: "start_login" });
+  if (result?.ok){
+    await render();
+  } else {
+    btn.textContent = "Log in";
+    btn.disabled = false;
+    const p = document.querySelector("#logged-out p");
+    p.textContent = "Login failed. Please try again.";
+  }
 });
 
-document.getElementById("flush-queue").addEventListener("click", async () => {
-  const result = await sendMessage({ type: "flush_queue" });
-  await refreshStatus();
-  await refreshLog();
-  document.getElementById("status").textContent = `Flushed ${result.flushed}, ${result.remaining} remaining.`;
+document.getElementById("btn-logout").addEventListener("click", async () => {
+  await sendMessage({ type: "logout" });
+  await render();
 });
 
-document.getElementById("clear-log").addEventListener("click", async () => {
+document.getElementById("btn-flush").addEventListener("click", async () => {
+  const btn = document.getElementById("btn-flush");
+  btn.textContent = "Retrying...";
+  btn.disabled = true;
+  await sendMessage({ type: "flush_queue" });
+  btn.textContent = "Retry failed."
+  btn.disabled = false;
+  await renderQueueStatus();
+  await renderLog();
+});
+
+document.getElementById("btn-clear-log").addEventListener("click", async () => {
   await sendMessage({ type: "clear_log" });
-  await refreshLog();
-  document.getElementById("status").textContent = "Log cleared";
+  await renderLog();
 })
 
-refreshStatus();
-refreshLog();
+render();
