@@ -148,6 +148,7 @@
                 caption = normaliseText(clone.textContent || "");
             }
         }
+        caption = caption.replace(/^Verified/i, "").trimStart();
 
         let { authorHandle, authorName } = { authorHandle: "", authorName: "" };
         const jsonLdHandle = resolveAuthorHandle();
@@ -156,7 +157,17 @@
             authorName = jsonLdHandle;
         } else {
             ({ authorHandle, authorName } = resolveAuthorFromDom(scope));
+        } 
+        
+        const rawScopeText = normaliseText(scope.textContent || "");
+        let scopeText = rawScopeText;
+        if (caption) {
+            const captionIndex = rawScopeText.indexOf(caption);
+            if (captionIndex !== -1) {
+                scopeText = rawScopeText.slice(captionIndex);
+            }
         }
+        scopeText = scopeText.slice(0, 4000);
 
         const post = makePost({
             platform: "instagram",
@@ -167,7 +178,7 @@
             authorName,
             thumbnailUrl: findThumbnail(scope),
             mediaType: permalink.startsWith("/reel/") ? "reel" : "post",
-            raw: { permalink, scopeText: normaliseText(scope.textContent || "").slice(0, 4000) }
+            raw: { permalink, scopeText }
         });
         sendCapture(post);
         log("Captured save: ", post.postUrl);

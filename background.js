@@ -120,7 +120,7 @@ async function startOAuthFlow(){
 
 async function postCapture(post){
     const config = await getConfig();
-    if (!config.apiBaseUrl){
+    if (!config.token){
         return { ok: false, reason: "not_logged_in" };
     }
 
