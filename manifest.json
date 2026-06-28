@@ -3,7 +3,7 @@
     "name": "Savenet",
     "version": "0.1.0",
     "description": "Capture posts as you save/bookmark them on Instagram and X, and forward them to your recommendation engine.",
-    "permissions": ["storage", "identity"],
+    "permissions": ["storage", "identity", "bookmarks", "readingList"],
     "host_permissions": [
         "https://www.instagram.com/*",
         "https://x.com/*",

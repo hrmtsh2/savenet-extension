@@ -143,6 +143,24 @@
     justify-content: space-between;
   }
   .queue-count { font-size: 11px; color: #666; }
+  .import-section { font-size: 12px; }
+  .import-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .folder-select {
+    flex: 1;
+    font-size: 11px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    background: white;
+    color: #333;
+    min-width: 0;
+  }
 </style>
 </head>
 <body>
@@ -181,6 +199,29 @@
       </div>
       <div id="log"></div>
     </div>
+    
+    <hr class="divider" />
+
+    <div class="import-section">
+      <div class="log-header">
+        <span>Import</span>
+      </div>
+
+      <div class="import-row">
+        <select id="folder-select" class="folder-select">
+          <option value="">Select a bookmark folder...</option>
+        </select>
+        <button class="btn-ghost" id="btn-import-bookmarks" disabled>Import</button>
+      </div>
+      <div class="hint" id="import-bookmark-status"></div>
+
+      <div class="import-row" style="margin-top:8px">
+        <span class="queue-count">Reading List</span>
+        <button class="btn-ghost" id="btn-import-reading-list">Import all</button>
+      </div>
+      <div class="hint" id="import-reading-status"></div>
+    </div>
+
   </div>
 
   <script src="popup.js"></script>

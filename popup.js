@@ -29,6 +29,7 @@ async function render(){
     loggedOutEl.style.display = "none";
     loggedInEl.style.display = "flex";
     document.getElementById("user-email").textContent = auth.email || "";
+    await loadBookmarkFolders();
     await renderQueueStatus();
     await renderLog();
   } else {
@@ -106,5 +107,61 @@ document.getElementById("btn-clear-log").addEventListener("click", async () => {
   await sendMessage({ type: "clear_log" });
   await renderLog();
 })
+
+async function loadBookmarkFolders() {
+  const select = document.getElementById("folder-select");
+  const importBtn = document.getElementById("btn-import-bookmarks");
+  const result = await sendMessage({ type: "get_bookmark_folders" });
+  if (!result?.ok || !result.folders?.length) return;
+
+  result.folders.forEach((folder) => {
+    const opt = document.createElement("option");
+    opt.value = folder.id;
+    opt.textContent = `${folder.title} (${folder.count})`;
+    select.appendChild(opt);
+  });
+
+  select.addEventListener("change", () => {
+    importBtn.disabled = !select.value;
+  });
+}
+
+document.getElementById("btn-import-bookmarks").addEventListener("click", async () => {
+  const folderId = document.getElementById("folder-select").value;
+  if (!folderId) return;
+  const statusEl = document.getElementById("import-bookmark-status");
+  const btn = document.getElementById("btn-import-bookmarks");
+  btn.disabled = true;
+  btn.textContent = "Importing...";
+  statusEl.textContent = "";
+
+  const result = await sendMessage({ type: "import_bookmarks", folderId });
+  if (result?.ok) {
+    statusEl.textContent = `Done — ${result.sent} imported, ${result.failed} failed.`;
+  } else {
+    statusEl.textContent = "Import failed.";
+  }
+  btn.textContent = "Import";
+  btn.disabled = false;
+  await renderLog();
+});
+
+document.getElementById("btn-import-reading-list").addEventListener("click", async () => {
+  const statusEl = document.getElementById("import-reading-status");
+  const btn = document.getElementById("btn-import-reading-list");
+  btn.disabled = true;
+  btn.textContent = "Importing...";
+  statusEl.textContent = "";
+
+  const result = await sendMessage({ type: "import_reading_list" });
+  if (result?.ok) {
+    statusEl.textContent = `Done — ${result.sent} imported, ${result.failed} failed.`;
+  } else {
+    statusEl.textContent = result?.error || "Import failed.";
+  }
+  btn.textContent = "Import all";
+  btn.disabled = false;
+  await renderLog();
+});
 
 render();

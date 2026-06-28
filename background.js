@@ -194,6 +194,140 @@ async function flushQueue(){
     return { flushed, remaining: remaining.length };
 }
 
+async function getBookmarkTree() {
+  return new Promise((resolve) => {
+    chrome.bookmarks.getTree((tree) => resolve(tree));
+  });
+}
+
+function flattenBookmarkFolders(nodes, path = "") {
+  const folders = [];
+  for (const node of nodes) {
+    if (node.children) {
+      const folderPath = path ? `${path} / ${node.title}` : (node.title || "Bookmarks");
+      if (node.id !== "0") { // skip invisible root
+        folders.push({ id: node.id, title: folderPath, count: countBookmarks(node) });
+      }
+      folders.push(...flattenBookmarkFolders(node.children, folderPath));
+    }
+  }
+  return folders;
+}
+
+function countBookmarks(node) {
+  if (!node.children) return node.url ? 1 : 0;
+  return node.children.reduce((sum, child) => sum + countBookmarks(child), 0);
+}
+
+function flattenBookmarksInFolder(nodes) {
+  const bookmarks = [];
+  for (const node of nodes) {
+    if (node.url) bookmarks.push(node);
+    if (node.children) bookmarks.push(...flattenBookmarksInFolder(node.children));
+  }
+  return bookmarks;
+}
+
+async function importBookmarksFromFolder(folderId) {
+  const [folder] = await new Promise((resolve) =>
+    chrome.bookmarks.getSubTree(folderId, resolve)
+  );
+  const bookmarks = flattenBookmarksInFolder(folder.children || []);
+  let sent = 0;
+  let failed = 0;
+
+  for (const bm of bookmarks) {
+    if (!bm.url || bm.url.startsWith("javascript:")) continue;
+    const post = {
+      platform: "browser_bookmark",
+      platformPostId: null,
+      postUrl: bm.url,
+      caption: bm.title || "",
+      authorHandle: "",
+      authorName: "",
+      thumbnailUrl: "",
+      mediaType: "bookmark",
+      capturedAt: bm.dateAdded
+        ? new Date(bm.dateAdded).toISOString()
+        : new Date().toISOString(),
+      sourceUrl: bm.url,
+      raw: { title: bm.title, folderId },
+    };
+    const result = await postCapture(post);
+    if (result.ok) sent++;
+    else failed++;
+  }
+  return { sent, failed, total: bookmarks.length };
+}
+
+async function importReadingList() {
+  if (!chrome.readingList) {
+    return { ok: false, error: "Reading List API not available in this browser" };
+  }
+  const entries = await chrome.readingList.query({});
+  let sent = 0;
+  let failed = 0;
+
+  for (const entry of entries) {
+    const post = {
+      platform: "reading_list",
+      platformPostId: null,
+      postUrl: entry.url,
+      caption: entry.title || "",
+      authorHandle: "",
+      authorName: "",
+      thumbnailUrl: "",
+      mediaType: "article",
+      capturedAt: entry.creationTime
+        ? new Date(entry.creationTime).toISOString()
+        : new Date().toISOString(),
+      sourceUrl: entry.url,
+      raw: { title: entry.title, hasBeenRead: entry.hasBeenRead },
+    };
+    const result = await postCapture(post);
+    if (result.ok) sent++;
+    else failed++;
+  }
+  return { ok: true, sent, failed, total: entries.length };
+}
+
+chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
+  if (!bookmark.url) return;
+  const post = {
+    platform: "browser_bookmark",
+    platformPostId: null,
+    postUrl: bookmark.url,
+    caption: bookmark.title || "",
+    authorHandle: "",
+    authorName: "",
+    thumbnailUrl: "",
+    mediaType: "bookmark",
+    capturedAt: new Date().toISOString(),
+    sourceUrl: bookmark.url,
+    raw: { title: bookmark.title },
+  };
+  await handleCapture(post);
+});
+
+if (chrome.readingList?.onEntryAdded) {
+  chrome.readingList.onEntryAdded.addListener(async (entry) => {
+    const post = {
+      platform: "reading_list",
+      platformPostId: null,
+      postUrl: entry.url,
+      caption: entry.title || "",
+      authorHandle: "",
+      authorName: "",
+      thumbnailUrl: "",
+      mediaType: "article",
+      capturedAt: new Date().toISOString(),
+      sourceUrl: entry.url,
+      raw: { title: entry.title },
+    };
+    await handleCapture(post);
+  });
+}
+
 let storageLock = Promise.resolve();
 function withLock(fn){
     const result = storageLock.then(fn, fn);
@@ -245,6 +379,28 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     if (msg.type === "clear_log"){
         chrome.storage.local.set({ [logKey]: [] }).then(() => { sendResponse({ ok: true }); })        
+        return true;
+    }
+
+    if (msg.type === "get_bookmark_folders") {
+        getBookmarkTree().then((tree) => {
+            const folders = flattenBookmarkFolders(tree);
+            sendResponse({ ok: true, folders });
+        });
+        return true;
+    }
+
+    if (msg.type === "import_bookmarks") {
+        importBookmarksFromFolder(msg.folderId)
+            .then((result) => sendResponse({ ok: true, ...result }))
+            .catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+    }
+
+    if (msg.type === "import_reading_list") {
+        importReadingList()
+            .then(sendResponse)
+            .catch((err) => sendResponse({ ok: false, error: err.message }));
         return true;
     }
 });
