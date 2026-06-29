@@ -1,17 +1,25 @@
 {
     "manifest_version": 3,
-    "name": "Savenet",
+    "name": "SaveNet - Save smarter, find faster",
     "version": "0.1.0",
-    "description": "Capture posts as you save/bookmark them on Instagram and X, and forward them to your recommendation engine.",
+    "description": "Companion extension to SaveNet. Capture Instagram saves, X bookmarks, and browser bookmarks into your AI-powered library.",
+    "key": "1Mz0A7jrew91mGZHpjpXAzPCXotEYAHAszfRG0QWUI0=",
     "permissions": ["storage", "identity", "bookmarks", "readingList"],
     "host_permissions": [
         "https://www.instagram.com/*",
         "https://x.com/*",
         "https://twitter.com/*",
         "https://savenet-app-build.vercel.app/*",
-        "https://achceaepckifblghhnbedcladddiailp.chromiumapp.org/*",
+        "https://savenet.am1.tech/*",
+        "https://pgcomjgdgfjaoaneghlckaejibkjangn.chromiumapp.org/*",
         "http://localhost:3000/*"
     ],
+     "icons": {
+        "16": "icon_16.png",
+        "32": "icon_32.png",
+        "48": "icon_48.png",
+        "128": "icon_128.png"
+    },
     "background": {
         "service_worker": "background.js"
     },

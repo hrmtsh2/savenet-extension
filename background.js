@@ -5,10 +5,10 @@ const logKey = "savenetCaptureLog"; // capture history log
 const maxLog = 50;
 
 // final prod - vercel build, aws cognito auth
-const apiBase = "https://savenet-app-build.vercel.app";
+const apiBase = "https://savenet.am1.tech";
 const cognitoDomain = "https://ap-south-1gevfg0ops.auth.ap-south-1.amazoncognito.com";
 const clientId = "52gkrui2tsdvgi7l27ojeh18oh";
-const redirectUri = `https://achceaepckifblghhnbedcladddiailp.chromiumapp.org`;
+const redirectUri = `https://pgcomjgdgfjaoaneghlckaejibkjangn.chromiumapp.org`;
 const scopes = "openid email profile"
 
 // pkce (proof key for code exchange) helpers
