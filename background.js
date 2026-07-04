@@ -8,7 +8,7 @@ const maxLog = 50;
 const apiBase = "https://savenet.am1.tech";
 const cognitoDomain = "https://ap-south-1gevfg0ops.auth.ap-south-1.amazoncognito.com";
 const clientId = "52gkrui2tsdvgi7l27ojeh18oh";
-const redirectUri = `https://pgcomjgdgfjaoaneghlckaejibkjangn.chromiumapp.org`;
+const redirectUri = `https://kmbfnbpogmgfmlohnajkpmeicocpedof.chromiumapp.org`;
 const scopes = "openid email profile"
 
 // pkce (proof key for code exchange) helpers
