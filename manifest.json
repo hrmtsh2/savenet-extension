@@ -3,7 +3,6 @@
     "name": "SaveNet - Save smarter, find faster",
     "version": "1.0.0",
     "description": "Companion extension to SaveNet. Capture Instagram saves, X bookmarks, and browser bookmarks into your AI-powered library.",
-    "key": "1Mz0A7jrew91mGZHpjpXAzPCXotEYAHAszfRG0QWUI0=",
     "permissions": ["storage", "identity", "bookmarks", "readingList"],
     "host_permissions": [
         "https://www.instagram.com/*",
