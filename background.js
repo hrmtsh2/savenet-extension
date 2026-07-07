@@ -118,6 +118,21 @@ async function startOAuthFlow(){
     });
 }
 
+async function startCognitoLogout(){
+    const logoutUrl = 
+      `${cognitoDomain}/logout` +
+      `?client_id=${clientId}` +
+      `&logout_uri=${encodeURIComponent(redirectUri)}`
+    return new Promise((resolve) => {
+        chrome.identity.launchWebAuthFlow(
+            { url: logoutUrl, interactive: false },
+            () => {
+                resolve(null)
+            }
+        )
+    })
+}
+
 async function postCapture(post){
     const config = await getConfig();
     if (!config.token){
@@ -347,9 +362,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     if (msg.type === "logout"){
-        setConfig({ token: null, email: null }).then(() => {
-            sendResponse({ ok: true });
-        });
+        startCognitoLogout()
+          .catch(() => {})
+          .finally(() => {
+            setConfig({ token: null, email: null }).then(() => {
+                sendResponse({ ok: true })
+            })
+          })
         return true;
     }
 
