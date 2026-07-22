@@ -32,6 +32,7 @@ async function render(){
     await loadBookmarkFolders();
     await renderQueueStatus();
     await renderLog();
+    await checkCollectionPage();
   } else {
     loggedOutEl.style.display = "flex";
     loggedInEl.style.display = "none";
@@ -70,6 +71,20 @@ async function renderLog(){
         <a class="log-url" href="${escapeHtml(entry.postUrl)}" target="_blank">${escapeHtml(entry.postUrl)}</a>
       </div>`;
   }).join("");
+}
+
+async function checkCollectionPage(){
+  const result = (await sendMessage({ type: "check_collection_page" })) || {};
+  console.log("[SaveNet popup] checkCollectionPage result:", result);
+  const sectionEl = document.getElementById("collection-import-section");
+  const labelEl = document.getElementById("collection-section-label");
+  if (result.isCollection){
+    sectionEl.style.display = "block";
+    const name = result.collectionName || "saved posts";
+    labelEl.textContent = `Import "${name}`;
+  } else {
+    sectionEl.style.display = "none";
+  }
 }
 
 document.getElementById("btn-login").addEventListener("click", async () => {
@@ -163,5 +178,38 @@ document.getElementById("btn-import-reading-list").addEventListener("click", asy
   btn.disabled = false;
   await renderLog();
 });
+
+document.getElementById("btn-import-collection").addEventListener("click", async () => {
+  const btn = document.getElementById("btn-import-collection");
+  const statusEl = document.getElementById("collection-import-status");
+  btn.disabled = true;
+  btn.textContent = "Importing...";
+  statusEl.textContent = "Starting...";
+  await sendMessage({ type: "start_collection_import"});
+});
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type === "collection_import_progress"){
+    const statusEl = document.getElementById("collection-import-status");
+    const btn = document.getElementById("btn-import-collection");
+    if (statusEl) statusEl.textContent = `${msg.count} posts captured so far...`;
+    if (btn) btn.textContent = "Importing...";
+  }
+  
+  if (msg.type === "collection_import_complete"){
+    const statusEl = document.getElementById("collection-import-status");
+    const btn = document.getElementById("btn-import-collection");
+    if (statusEl) statusEl.textContent = `Done. ${msg.count} posts imported.`;
+    if (btn){
+      btn.textContent = "Import all posts";
+      btn.disabled = false;
+    }
+    renderLog();
+  }
+
+  if (msg.type === "scan_progress"){
+    showStatus(msg.message);
+  }
+})
 
 render();

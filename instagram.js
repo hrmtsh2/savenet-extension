@@ -192,8 +192,174 @@
         handleSaveClick(saveEl);
     }, true);
 
-    window.addEventListener("savenet:network-candidate", (event) => {
-        log("Network candidate (Instagram): ", event.detail.method, event.detail.url);
+    let collectionImportActive = false;
+    let collectionImportCount = 0;
+
+    function extractPostFromMedia(media){
+        const code = media.code || media.shortcode;
+        if (!code) return null;
+        const caption = media.caption?.text || "";
+        const username = media.user?.username || "";
+        const isVerified = media.user?.is_verified || false;
+        const fullName = media.user?.full_name || "";
+        const mediaType = media.media_type;
+        const candidates = media.image_versions2?.candidates || [];
+        const thumbnailUrl = candidates[1]?.url || candidates[0]?.url || "";
+        const locationName = media.location?.name || "";
+        const captionText = normaliseText((isVerified ? "" : "") + caption) // strip the 'verified' prefix
+
+        return makePost({
+            platform: "instagram",
+            platformPostId: code,
+            postUrl: `https://www.instagram.com/p/${code}`,
+            caption: captionText,
+            authorHandle: username,
+            authorName: fullName,
+            thumbnailUrl,
+            mediaType: mediaType === 2 ? "reel" : mediaType === 8 ? "carousel" : "post",
+            raw: {
+                permalink: `/p/${code}`,
+                scopeText: normaliseText(caption + (locationName ? ` ${locationName}`: "")),
+                fromCollection: true
+            }
+        });
+    }
+
+    // window.addEventListener("savenet:network-candidate", (event) => {
+    //     const detail = event.detail;
+    //     if (detail.type === "saved-posts-response"){
+    //         const items = detail.data?.items || [];
+    //         let captured = 0;
+
+    //         for (const item of items){
+    //             const media = item.media || item;
+    //             const post = extractPostFromMedia(media);
+    //             if (!post) continue;
+    //             sendCapture(post);
+    //             captured++;
+    //             collectionImportCount++;
+    //         }
+
+    //         if (captured > 0){
+    //             log(`Collection import: captured ${captured} posts (${collectionImportCount} total so far)`);
+    //             // notify popup of progress
+    //             chrome.runtime.sendMessage({
+    //                 type: "collection_import_progress",
+    //                 count: collectionImportCount
+    //             });
+    //         }
+
+    //         // scroll and check for more posts
+    //         const moreAvailable = detail.data?.moreAvailable; // this flag already in data to prevent needless scrolling
+    //         const nextMaxId = detail.data?.next_max_id;
+    //         if(collectionImportActive && (moreAvailable || nextMaxId)){
+    //             setTimeout(() => {
+    //                 log("Collection import: scrolling to load more...");
+    //                 window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+    //             }, 1500);
+    //         } else if(collectionImportActive){
+    //             collectionImportActive = false;
+    //             log(`Collection import complete. Total captured: ${collectionImportCount}`);
+    //             chrome.runtime.sendMessage({
+    //                 type: "collection_import_complete",
+    //                 count: collectionImportCount
+    //             });
+    //             collectionImportCount = 0;
+    //         }
+    //         return;
+    //     }
+
+    //     log("Network candidate (Instagram): ", event.detail.method, event.detail.url);
+    // });    
+
+    async function importCollectionViaApi(){
+        console.log("[instagram.js] Starting collection API import...");        
+        // extract collection ID from URL
+        const urlMatch = window.location.pathname.match(/\/saved\/[^/]+\/(\d+)\/?$/);
+        const collectionId = urlMatch ? urlMatch[1] : null;        
+        // get CSRF token from cookies
+        const csrfToken = document.cookie
+            .split("; ")
+            .find((c) => c.startsWith("csrftoken="))
+            ?.split("=")?.[1] || "";
+        // get app ID from Instagram's page variables
+        const appId = window.__additionalData?.["app_id"] 
+            || document.querySelector("meta[property='al:ios:app_store_id']")?.content
+            || "936619743392459"; // IG's public app ID
+
+        let maxId = null;
+        let totalCaptured = 0;
+        let hasMore = true;
+        let pageCount = 0;
+
+        while (hasMore && pageCount < 50) { // cap at 50 pages (1050 posts) to avoid infinite loops
+            pageCount++;            
+            const endpoint = collectionId
+            ? `/api/v1/feed/collection/${collectionId}/posts/?count=21${maxId ? `&max_id=${maxId}` : ""}`
+            : `/api/v1/feed/saved/posts/?num_results=21${maxId ? `&max_id=${maxId}` : ""}`;
+            try {
+            const response = await fetch(`https://www.instagram.com${endpoint}`, {
+                headers: {
+                "X-CSRFToken": csrfToken,
+                "X-IG-App-ID": appId,
+                "X-Requested-With": "XMLHttpRequest",
+                "Referer": window.location.href,
+                },
+                credentials: "include",
+            });
+
+            if (!response.ok) {
+                log(`Collection API returned ${response.status} — stopping import`);
+                break;
+            }
+
+            const data = await response.json();
+            const items = data?.items || [];
+
+            for (const item of items) {
+                const media = item.media || item;
+                const post = extractPostFromMedia(media);
+                if (!post) continue;
+                sendCapture(post);
+                totalCaptured++;
+            }
+
+            log(`Page ${pageCount}: captured ${items.length} posts (${totalCaptured} total)`);
+            
+            chrome.runtime.sendMessage({
+                type: "collection_import_progress",
+                count: totalCaptured,
+            });
+
+            hasMore = data?.more_available && items.length > 0;
+            maxId = data?.next_max_id || null;
+
+            if (hasMore) {
+                // delay between requests to avoid rate limiting smh
+                await new Promise((r) => setTimeout(r, 1000));
+            }
+
+            } catch (err) {
+            log("Collection API error:", err.message);
+            break;
+            }
+        }
+
+        collectionImportActive = false;
+        log(`Collection import complete. Total: ${totalCaptured}`);
+        chrome.runtime.sendMessage({
+            type: "collection_import_complete",
+            count: totalCaptured,
+        });
+    }
+
+    chrome.runtime.onMessage.addListener((msg) => {
+        console.log("[SaveNet] instagram.js received message:", msg.type);
+        if (msg.type === "start_collection_import") {
+            collectionImportActive = true;
+            collectionImportCount = 0;
+            importCollectionViaApi();
+        }
     });
 
     log("Instagram capture adapter loaded.");

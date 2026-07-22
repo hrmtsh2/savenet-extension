@@ -3,7 +3,7 @@
     "name": "SaveNet - Save smarter, find faster",
     "version": "1.0.1",
     "description": "Companion extension to SaveNet. Capture Instagram saves, X bookmarks, and browser bookmarks into your AI-powered library.",
-    "permissions": ["storage", "identity", "bookmarks", "readingList"],
+    "permissions": ["storage", "tabs", "identity", "bookmarks", "readingList"],
     "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAjyGHh/m9+u/p7mRHCrvpAzuVEcXmurBZM2hwgJFmSsHHn3S5mkML+T5lb9QrF7koac3he+Kpf5hyV8WW+IRTxHOxVAuI8nlkHiGyv3h21csFfd7uDavcqFRWaislrgNDF2k1PhU2Bcjd71J+UR+4ThStHywAjYnOsbGeKjxZWnd/NkZ5a4a6wLjyt8A+cD9y5XY7zY/nxIomCYTCnmpy1WIBBC3rtIEdhIvKf0Se6G806L4CpTMRZ8sAipptU3tAeSVmPbv4EiECfWWM8GZHemwSAdVrPIJ377bzwOZ3w3N+S/XJ+VA7fh0MnmQOkzgrvui9+iHJ8s9eTT3845OIWQIDAQAB",
     "host_permissions": [
         "https://www.instagram.com/*",
@@ -28,6 +28,12 @@
         "default_title": "Savenet"
     },
     "content_scripts": [
+        {
+            "matches": ["https://www.instagram.com/*"],
+            "js": ["network-monitor.js"],
+            "world": "MAIN",
+            "run_at": "document_start"
+        },
         {
             "matches": ["https://www.instagram.com/*"],
             "js": ["common.js", "instagram.js"],

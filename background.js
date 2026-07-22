@@ -356,6 +356,59 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return true;
     }
 
+    if (msg.type === "start_collection_import"){
+        chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+            console.log("[SaveNet BG] sending to tab:", tab?.id, tab?.url);
+            if (!tab?.id){
+                sendResponse({ ok: false, error: "No active tab" });
+                return;
+            }
+            chrome.tabs.sendMessage(tab.id, { type: "start_collection_import" }, (response) => {
+                console.log("[SaveNet BG] content script response:", response, chrome.runtime.lastError?.message);
+            });
+            sendResponse({ ok: true });
+        })
+        return true;
+    }
+
+    if (msg.type === "collection_import_progress"){
+        chrome.runtime.sendMessage({ type: "collection_import_progress", count: msg.count }).catch(() => {}); // popup may not be open
+        sendResponse({ ok: true });
+        return true;
+    }
+
+    if (msg.type === "collection_import_complete"){
+        chrome.runtime.sendMessage({ type: "collection_import_complete", count: msg.count }).catch(() => {});
+        sendResponse({ ok: true });
+        return true;
+    }
+
+    if (msg.type === "check_collection_page") {
+        console.log("[SaveNet BG] check_collection_page received");
+        chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+            console.log("[SaveNet BG] tab url:", tab?.url);
+            if (!tab?.url) { 
+                sendResponse({ isCollection: false });
+                return;
+            }
+            try {
+                const url = new URL(tab.url);
+                if (url.hostname !== "www.instagram.com") {
+                    sendResponse({ isCollection: false });
+                    return;
+                }
+                const isCollection = /^\/[^/]+\/saved\/.+/i.test(url.pathname);
+                const collectionMatch = url.pathname.match(/^\/[^/]+\/saved\/([^/]+)/);
+                const rawName = collectionMatch ? collectionMatch[1] : "saved posts";
+                const collectionName = rawName.replace(/-/g, " ");
+                sendResponse({ isCollection, collectionName });
+            } catch {
+            sendResponse({ isCollection: false });
+            }
+        })
+        return true;
+    }
+
     if (msg.type === "start_login"){
         startOAuthFlow().then((result) => sendResponse({ ok: true, ...result })).catch((err) => sendResponse({ ok: false, error: err.message }));
         return true;
