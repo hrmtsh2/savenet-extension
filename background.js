@@ -1,17 +1,13 @@
-// keys for chrome.storage.local
-const configKey = "savenetCondfig"; // backend config for the user
-const queueKey = "savenetQueue"; // retry queue for tracking backend request retries
-const logKey = "savenetCaptureLog"; // capture history log
+const configKey = "savenetCondfig";
+const queueKey = "savenetQueue";
+const logKey = "savenetCaptureLog";
 const maxLog = 50;
 
-// final prod - vercel build, aws cognito auth
 const apiBase = "https://savenet.am1.tech";
 const cognitoDomain = "https://ap-south-1gevfg0ops.auth.ap-south-1.amazoncognito.com";
 const clientId = "52gkrui2tsdvgi7l27ojeh18oh";
 const redirectUri = `https://kmbfnbpogmgfmlohnajkpmeicocpedof.chromiumapp.org`;
 const scopes = "openid email profile"
-
-// pkce (proof key for code exchange) helpers
 
 function base64UrlEncode(buffer){
     return btoa(String.fromCharCode(...new Uint8Array(buffer))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -92,7 +88,6 @@ async function startOAuthFlow(){
                     return;
                 }
 
-                // exchange code for savenet via backend
                 try {
                     const response = await fetch(`${apiBase}/api/auth/extension-token`, {
                         method: "POST",
@@ -165,7 +160,7 @@ async function handleCapture(post){
     const result = await postCapture(post);
 
     await appendLog({
-        pltform: post.platform,
+        platform: post.platform,
         postUrl: post.postUrl,
         caption: (post.caption || "").slice(0, 120),
         capturedAt: post.capturedAt,
@@ -343,13 +338,6 @@ if (chrome.readingList?.onEntryAdded) {
   });
 }
 
-let storageLock = Promise.resolve();
-function withLock(fn){
-    const result = storageLock.then(fn, fn);
-    storageLock = result.catch(() => {});
-    return result;
-}
-
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === "capture_post"){
         handleCapture(msg.post).then(sendResponse);
@@ -359,11 +347,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === "start_collection_import"){
         chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
             console.log("[SaveNet BG] sending to tab:", tab?.id, tab?.url);
-            if (!tab?.id){
+            if (!tab?.id || !tab.url){
                 sendResponse({ ok: false, error: "No active tab" });
                 return;
             }
-            chrome.tabs.sendMessage(tab.id, { type: "start_collection_import" }, (response) => {
+                const pathname = new URL(tab.url).pathname;
+                const match = pathname.match(/^\/[^/]+\/saved\/([^/]+)/);
+                const collectionName = match ? decodeURIComponent(match[1]).replace(/-/g, " ") : "";
+                chrome.tabs.sendMessage(tab.id, { type: "start_collection_import", collectionName }, (response) => {
                 console.log("[SaveNet BG] content script response:", response, chrome.runtime.lastError?.message);
             });
             sendResponse({ ok: true });
@@ -372,7 +363,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     if (msg.type === "collection_import_progress"){
-        chrome.runtime.sendMessage({ type: "collection_import_progress", count: msg.count }).catch(() => {}); // popup may not be open
+        chrome.runtime.sendMessage({ type: "collection_import_progress", count: msg.count }).catch(() => {});
         sendResponse({ ok: true });
         return true;
     }

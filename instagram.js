@@ -78,12 +78,6 @@
         return normalisePermalink(anchor.getAttribute("href"));
     }
 
-    // failed various approaches so gave up.
-    // however since it works for tweets, so the field is going to be passed nevertheless into the canonical post object.
-    function findThumbnail(scope) {
-        "";
-    }
-
     function findAuthorLink(scope){
         const root = scope || document;
         const header = root.querySelector("header") || root;
@@ -118,11 +112,8 @@
     function extractCaptionFromListItem(li){
         if (!li) return "";
         const clone = li.cloneNode(true);
-        // only the first link is author attribution
         const firstLink = clone.querySelector('a[role="link"]');
         firstLink?.remove();
-        // the others are hashtags that are critical as the post author uses hashtags for the same purpose our user will
-        // visibility/searching
         clone.querySelectorAll("time, button").forEach((el) => el.remove());
         clone.querySelectorAll("br").forEach((br) => br.replaceWith(" "));
         return normaliseText(clone.textContent || "");
@@ -176,7 +167,7 @@
             caption,
             authorHandle,
             authorName,
-            thumbnailUrl: findThumbnail(scope),
+            thumbnailUrl: "",
             mediaType: permalink.startsWith("/reel/") ? "reel" : "post",
             raw: { permalink, scopeText }
         });
@@ -184,7 +175,7 @@
         log("Captured save: ", post.postUrl);
     }
 
-    document.addEventListener("click", (evet) => {
+    document.addEventListener("click", (event) => {
         const target = event.target;
         if (!(target instanceof Element)) return;
         const saveEl = target.closest(saveSelector);
@@ -192,21 +183,17 @@
         handleSaveClick(saveEl);
     }, true);
 
-    let collectionImportActive = false;
-    let collectionImportCount = 0;
-
     function extractPostFromMedia(media){
         const code = media.code || media.shortcode;
         if (!code) return null;
         const caption = media.caption?.text || "";
         const username = media.user?.username || "";
-        const isVerified = media.user?.is_verified || false;
         const fullName = media.user?.full_name || "";
         const mediaType = media.media_type;
         const candidates = media.image_versions2?.candidates || [];
         const thumbnailUrl = candidates[1]?.url || candidates[0]?.url || "";
         const locationName = media.location?.name || "";
-        const captionText = normaliseText((isVerified ? "" : "") + caption) // strip the 'verified' prefix
+        const captionText = normaliseText(caption);
 
         return makePost({
             platform: "instagram",
@@ -225,74 +212,24 @@
         });
     }
 
-    // window.addEventListener("savenet:network-candidate", (event) => {
-    //     const detail = event.detail;
-    //     if (detail.type === "saved-posts-response"){
-    //         const items = detail.data?.items || [];
-    //         let captured = 0;
-
-    //         for (const item of items){
-    //             const media = item.media || item;
-    //             const post = extractPostFromMedia(media);
-    //             if (!post) continue;
-    //             sendCapture(post);
-    //             captured++;
-    //             collectionImportCount++;
-    //         }
-
-    //         if (captured > 0){
-    //             log(`Collection import: captured ${captured} posts (${collectionImportCount} total so far)`);
-    //             // notify popup of progress
-    //             chrome.runtime.sendMessage({
-    //                 type: "collection_import_progress",
-    //                 count: collectionImportCount
-    //             });
-    //         }
-
-    //         // scroll and check for more posts
-    //         const moreAvailable = detail.data?.moreAvailable; // this flag already in data to prevent needless scrolling
-    //         const nextMaxId = detail.data?.next_max_id;
-    //         if(collectionImportActive && (moreAvailable || nextMaxId)){
-    //             setTimeout(() => {
-    //                 log("Collection import: scrolling to load more...");
-    //                 window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-    //             }, 1500);
-    //         } else if(collectionImportActive){
-    //             collectionImportActive = false;
-    //             log(`Collection import complete. Total captured: ${collectionImportCount}`);
-    //             chrome.runtime.sendMessage({
-    //                 type: "collection_import_complete",
-    //                 count: collectionImportCount
-    //             });
-    //             collectionImportCount = 0;
-    //         }
-    //         return;
-    //     }
-
-    //     log("Network candidate (Instagram): ", event.detail.method, event.detail.url);
-    // });    
-
-    async function importCollectionViaApi(){
+    async function importCollectionViaApi(collectionName){
         console.log("[instagram.js] Starting collection API import...");        
-        // extract collection ID from URL
         const urlMatch = window.location.pathname.match(/\/saved\/[^/]+\/(\d+)\/?$/);
         const collectionId = urlMatch ? urlMatch[1] : null;        
-        // get CSRF token from cookies
         const csrfToken = document.cookie
             .split("; ")
             .find((c) => c.startsWith("csrftoken="))
             ?.split("=")?.[1] || "";
-        // get app ID from Instagram's page variables
         const appId = window.__additionalData?.["app_id"] 
             || document.querySelector("meta[property='al:ios:app_store_id']")?.content
-            || "936619743392459"; // IG's public app ID
+            || "936619743392459";
 
         let maxId = null;
         let totalCaptured = 0;
         let hasMore = true;
         let pageCount = 0;
 
-        while (hasMore && pageCount < 50) { // cap at 50 pages (1050 posts) to avoid infinite loops
+        while (hasMore && pageCount < 50) {
             pageCount++;            
             const endpoint = collectionId
             ? `/api/v1/feed/collection/${collectionId}/posts/?count=21${maxId ? `&max_id=${maxId}` : ""}`
@@ -315,11 +252,17 @@
 
             const data = await response.json();
             const items = data?.items || [];
+            // prefer the api's human-readable name over a numeric url segment
+            const apiCollectionName = data?.collection?.name || data?.collection_name || data?.collection?.collection_name;
+            if (typeof apiCollectionName === "string" && apiCollectionName.trim()) {
+                collectionName = apiCollectionName.trim();
+            }
 
             for (const item of items) {
                 const media = item.media || item;
                 const post = extractPostFromMedia(media);
                 if (!post) continue;
+                if (collectionName && !/^\d+$/.test(collectionName)) post.raw.collectionName = collectionName;
                 sendCapture(post);
                 totalCaptured++;
             }
@@ -335,7 +278,6 @@
             maxId = data?.next_max_id || null;
 
             if (hasMore) {
-                // delay between requests to avoid rate limiting smh
                 await new Promise((r) => setTimeout(r, 1000));
             }
 
@@ -345,7 +287,6 @@
             }
         }
 
-        collectionImportActive = false;
         log(`Collection import complete. Total: ${totalCaptured}`);
         chrome.runtime.sendMessage({
             type: "collection_import_complete",
@@ -356,9 +297,7 @@
     chrome.runtime.onMessage.addListener((msg) => {
         console.log("[SaveNet] instagram.js received message:", msg.type);
         if (msg.type === "start_collection_import") {
-            collectionImportActive = true;
-            collectionImportCount = 0;
-            importCollectionViaApi();
+            importCollectionViaApi(msg.collectionName);
         }
     });
 

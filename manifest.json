@@ -30,12 +30,6 @@
     "content_scripts": [
         {
             "matches": ["https://www.instagram.com/*"],
-            "js": ["network-monitor.js"],
-            "world": "MAIN",
-            "run_at": "document_start"
-        },
-        {
-            "matches": ["https://www.instagram.com/*"],
             "js": ["common.js", "instagram.js"],
             "run_at": "document_idle"
         },
