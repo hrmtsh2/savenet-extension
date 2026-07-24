@@ -29,6 +29,7 @@ async function render(){
     loggedOutEl.style.display = "none";
     loggedInEl.style.display = "flex";
     document.getElementById("user-email").textContent = auth.email || "";
+    await renderLabels();
     await loadBookmarkFolders();
     await renderQueueStatus();
     await renderLog();
@@ -37,6 +38,53 @@ async function render(){
     loggedOutEl.style.display = "flex";
     loggedInEl.style.display = "none";
   }
+}
+
+async function renderLabels(){
+  const optionsEl = document.getElementById("label-options");
+  const summaryEl = document.getElementById("active-label-summary");
+  summaryEl.textContent = "Loading labels...";
+  optionsEl.innerHTML = '<span class="hint">Loading labels<span class="loading-ellipsis"><span>.</span><span>.</span><span>.</span></span></span>';
+  const [result, platform] = await Promise.all([
+    sendMessage({ type: "get_labels" }),
+    sendMessage({ type: "get_active_platform" }),
+  ]);
+  const labelResult = result || {};
+  const labels = labelResult.labels || [];
+  const activeLabelIds = new Set(labelResult.activeLabelIds || []);
+  const platformEl = document.getElementById("automatic-platform-label");
+  platformEl.textContent = platform?.name ? `${platform.name} will be added automatically.` : "Platform labels are added automatically when detected.";
+
+  if (!labelResult.ok) {
+    optionsEl.innerHTML = `<span class="hint">Could not load labels (${escapeHtml(labelResult.error || "unknown error")}). Check that the web app is running and log in to the extension again.</span>`;
+    summaryEl.textContent = "Could not load labels";
+    return;
+  }
+
+  if (!labels.length){
+    optionsEl.innerHTML = '<span class="hint">No personal labels yet. Create one in the web app, then reopen this menu.</span>';
+    summaryEl.textContent = "No custom labels";
+    return;
+  }
+
+  const activeNames = labels.filter((label) => activeLabelIds.has(label.id)).map((label) => label.name);
+  summaryEl.textContent = activeNames.length ? activeNames.join(", ") : "No labels selected";
+  optionsEl.innerHTML = "";
+  labels.forEach((label) => {
+    const option = document.createElement("label");
+    option.className = "label-option";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = String(label.id);
+    checkbox.checked = activeLabelIds.has(label.id);
+    checkbox.addEventListener("change", async () => {
+      const labelIds = [...optionsEl.querySelectorAll("input:checked")].map((input) => Number(input.value));
+      const saved = await sendMessage({ type: "set_active_labels", labelIds });
+      if (saved?.ok) await renderLabels();
+    });
+    option.append(checkbox, document.createTextNode(label.name));
+    optionsEl.appendChild(option);
+  });
 }
 
 async function renderQueueStatus(){

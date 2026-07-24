@@ -39,6 +39,45 @@ async function setConfig(partial){
     await chrome.storage.local.set({ [configKey]: { ...current, ...partial } });
 }
 
+function normaliseLabelIds(labelIds){
+    return [...new Set((Array.isArray(labelIds) ? labelIds : []).map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+}
+
+async function getActiveLabelIds(){
+    const config = await getConfig();
+    return normaliseLabelIds(config.activeLabelIds);
+}
+
+async function applyActiveLabels(post){
+    const labelIds = Array.isArray(post.labelIds) ? normaliseLabelIds(post.labelIds) : await getActiveLabelIds();
+    return { ...post, labelIds };
+}
+
+async function getAvailableLabels(){
+    const config = await getConfig();
+    if (!config.token) return { ok: false, error: "Not logged in", labels: [], activeLabelIds: [] };
+
+    try {
+        const response = await fetch(`${apiBase}/api/labels`, {
+            headers: { Authorization: `Bearer ${config.token}` }
+        });
+        if (!response.ok) throw new Error(`http_${response.status}`);
+        const data = await response.json();
+        const labels = Array.isArray(data.labels) ? data.labels.filter((label) => Number.isInteger(label?.id) && typeof label?.name === "string") : [];
+        const validIds = new Set(labels.map((label) => label.id));
+        const activeLabelIds = normaliseLabelIds(config.activeLabelIds).filter((id) => validIds.has(id));
+        await setConfig({ labels, activeLabelIds });
+        return { ok: true, labels, activeLabelIds };
+    } catch (err) {
+        return {
+            ok: false,
+            error: err?.message || "Unable to load labels",
+            labels: Array.isArray(config.labels) ? config.labels : [],
+            activeLabelIds: normaliseLabelIds(config.activeLabelIds)
+        };
+    }
+}
+
 async function getQueue(){
     const result = await chrome.storage.local.get(queueKey);
     return result[queueKey] || [];
@@ -157,20 +196,21 @@ async function postCapture(post){
 }
 
 async function handleCapture(post){
-    const result = await postCapture(post);
+    const labelledPost = await applyActiveLabels(post);
+    const result = await postCapture(labelledPost);
 
     await appendLog({
-        platform: post.platform,
-        postUrl: post.postUrl,
-        caption: (post.caption || "").slice(0, 120),
-        capturedAt: post.capturedAt,
+        platform: labelledPost.platform,
+        postUrl: labelledPost.postUrl,
+        caption: (labelledPost.caption || "").slice(0, 120),
+        capturedAt: labelledPost.capturedAt,
         status: result.ok ? "sent" : result.reason === "not_logged_in" ? "not_logged_in" : "queued",
         reason: result.ok ? "" : result.reason
     });
 
     if (!result.ok && result.reason !== "not_logged_in"){
         const queue = await getQueue();
-        queue.push(post);
+        queue.push(labelledPost);
         await setQueue(queue);
     }
 
@@ -245,6 +285,7 @@ async function importBookmarksFromFolder(folderId) {
   const bookmarks = flattenBookmarksInFolder(folder.children || []);
   let sent = 0;
   let failed = 0;
+  const labelIds = await getActiveLabelIds();
 
   for (const bm of bookmarks) {
     if (!bm.url || bm.url.startsWith("javascript:")) continue;
@@ -261,9 +302,10 @@ async function importBookmarksFromFolder(folderId) {
         ? new Date(bm.dateAdded).toISOString()
         : new Date().toISOString(),
       sourceUrl: bm.url,
+      labelIds,
       raw: { title: bm.title, folderId },
     };
-    const result = await postCapture(post);
+    const result = await handleCapture(post);
     if (result.ok) sent++;
     else failed++;
   }
@@ -277,6 +319,7 @@ async function importReadingList() {
   const entries = await chrome.readingList.query({});
   let sent = 0;
   let failed = 0;
+  const labelIds = await getActiveLabelIds();
 
   for (const entry of entries) {
     const post = {
@@ -292,9 +335,10 @@ async function importReadingList() {
         ? new Date(entry.creationTime).toISOString()
         : new Date().toISOString(),
       sourceUrl: entry.url,
+      labelIds,
       raw: { title: entry.title, hasBeenRead: entry.hasBeenRead },
     };
-    const result = await postCapture(post);
+    const result = await handleCapture(post);
     if (result.ok) sent++;
     else failed++;
   }
@@ -345,7 +389,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     if (msg.type === "start_collection_import"){
-        chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+        getActiveLabelIds().then((labelIds) => chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
             console.log("[SaveNet BG] sending to tab:", tab?.id, tab?.url);
             if (!tab?.id || !tab.url){
                 sendResponse({ ok: false, error: "No active tab" });
@@ -354,11 +398,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 const pathname = new URL(tab.url).pathname;
                 const match = pathname.match(/^\/[^/]+\/saved\/([^/]+)/);
                 const collectionName = match ? decodeURIComponent(match[1]).replace(/-/g, " ") : "";
-                chrome.tabs.sendMessage(tab.id, { type: "start_collection_import", collectionName }, (response) => {
+                chrome.tabs.sendMessage(tab.id, { type: "start_collection_import", collectionName, labelIds }, (response) => {
                 console.log("[SaveNet BG] content script response:", response, chrome.runtime.lastError?.message);
             });
             sendResponse({ ok: true });
-        })
+        }))
         return true;
     }
 
@@ -419,6 +463,35 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === "get_auth_state"){
         getConfig().then((config) => {
             sendResponse({ loggedIn: !!config.token, email: config.email || null });
+        });
+        return true;
+    }
+
+    if (msg.type === "get_labels"){
+        getAvailableLabels().then(sendResponse);
+        return true;
+    }
+
+    if (msg.type === "get_active_platform") {
+        chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+            try {
+                const hostname = new URL(tab?.url || "").hostname;
+                if (hostname === "www.instagram.com") sendResponse({ name: "Instagram" });
+                else if (hostname === "x.com" || hostname === "twitter.com") sendResponse({ name: "X" });
+                else sendResponse({ name: null });
+            } catch {
+                sendResponse({ name: null });
+            }
+        });
+        return true;
+    }
+
+    if (msg.type === "set_active_labels"){
+        getAvailableLabels().then(async ({ labels }) => {
+            const validIds = new Set(labels.map((label) => label.id));
+            const activeLabelIds = normaliseLabelIds(msg.labelIds).filter((id) => validIds.has(id));
+            await setConfig({ activeLabelIds });
+            sendResponse({ ok: true, activeLabelIds });
         });
         return true;
     }

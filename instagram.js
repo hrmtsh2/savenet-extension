@@ -20,6 +20,56 @@
         return match ? match[1] : null;
     }
 
+    function shortcodeToMediaId(shortcode){
+        const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        let mediaId = 0n;
+        for (const char of shortcode){
+            const value = alphabet.indexOf(char);
+            if (value < 0) return null;
+            mediaId = mediaId * 64n + BigInt(value);
+        }
+        return mediaId.toString();
+    }
+
+    function getInstagramHeaders(){
+        const csrfToken = document.cookie
+            .split("; ")
+            .find((cookie) => cookie.startsWith("csrftoken="))
+            ?.split("=")?.[1] || "";
+        const appId = window.__additionalData?.["app_id"]
+            || document.querySelector("meta[property='al:ios:app_store_id']")?.content
+            || "936619743392459";
+        return {
+            "X-CSRFToken": csrfToken,
+            "X-IG-App-ID": appId,
+            "X-Requested-With": "XMLHttpRequest",
+            "Referer": window.location.href,
+        };
+    }
+
+    async function fetchMediaByShortcode(shortcode){
+        const mediaId = shortcodeToMediaId(shortcode);
+        if (!mediaId) return null;
+
+        try {
+            const response = await fetch(`/api/v1/media/${mediaId}/info/`, {
+                headers: getInstagramHeaders(),
+                credentials: "include",
+            });
+            if (!response.ok) {
+                log(`Media API returned ${response.status} for ${shortcode}`);
+                return null;
+            }
+            const data = await response.json();
+            const media = data?.items?.[0] || data?.item || data?.media || null;
+            if (!media || typeof media !== "object") return null;
+            return { ...media, code: media.code || media.shortcode || shortcode };
+        } catch (err) {
+            log("Media API error:", err?.message || err);
+            return null;
+        }
+    }
+
     function parseCaptionFromJsonLd(scope){
         const scripts = Array.from((scope || document).querySelectorAll('script[type="application/ld+json"]'));
         for (const script of scripts){
@@ -119,14 +169,8 @@
         return normaliseText(clone.textContent || "");
     }
 
-    function handleSaveClick(target){
-        const scope = findScope(target);
-        const permalink = findPermalinkInScope(scope) || normalisePermalink(window.location.pathname);
-        if (!permalink){
-            log("Save clicked but could not resolve a post permalink.", target);
-            return;
-        }
-
+    function buildPostFromDom(scope, permalink){
+        const shortcode = extractShortcode(permalink);
         let caption = parseCaptionFromJsonLd(scope) || parseCaptionFromMeta();
         if (!caption) {
             caption = extractCaptionFromListItem(findCaptionListItem(scope));
@@ -148,31 +192,46 @@
             authorName = jsonLdHandle;
         } else {
             ({ authorHandle, authorName } = resolveAuthorFromDom(scope));
-        } 
-        
+        }
+
         const rawScopeText = normaliseText(scope.textContent || "");
         let scopeText = rawScopeText;
         if (caption) {
             const captionIndex = rawScopeText.indexOf(caption);
-            if (captionIndex !== -1) {
-                scopeText = rawScopeText.slice(captionIndex);
-            }
+            if (captionIndex !== -1) scopeText = rawScopeText.slice(captionIndex);
         }
-        scopeText = scopeText.slice(0, 4000);
 
-        const post = makePost({
+        return makePost({
             platform: "instagram",
-            platformPostId: extractShortcode(permalink),
+            platformPostId: shortcode,
             postUrl: `https://www.instagram.com${permalink}`,
             caption,
             authorHandle,
             authorName,
             thumbnailUrl: "",
             mediaType: permalink.startsWith("/reel/") ? "reel" : "post",
-            raw: { permalink, scopeText }
+            raw: { permalink, scopeText: scopeText.slice(0, 4000), fromDomFallback: true }
         });
+    }
+
+    async function handleSaveClick(target){
+        const scope = findScope(target);
+        const permalink = findPermalinkInScope(scope) || normalisePermalink(window.location.pathname);
+        if (!permalink){
+            log("Save clicked but could not resolve a post permalink.", target);
+            return;
+        }
+
+        const shortcode = extractShortcode(permalink);
+        const media = shortcode ? await fetchMediaByShortcode(shortcode) : null;
+        const post = media ? extractPostFromMedia(media) : buildPostFromDom(scope, permalink);
+        if (post && media) {
+            post.raw.fromMediaApi = true;
+            post.raw.permalink = permalink;
+        }
+        if (!post) return;
         sendCapture(post);
-        log("Captured save: ", post.postUrl);
+        log(`Captured save via ${media ? "media API" : "DOM fallback"}:`, post.postUrl);
     }
 
     document.addEventListener("click", (event) => {
@@ -180,7 +239,7 @@
         if (!(target instanceof Element)) return;
         const saveEl = target.closest(saveSelector);
         if (!saveEl) return;
-        handleSaveClick(saveEl);
+        void handleSaveClick(saveEl);
     }, true);
 
     function extractPostFromMedia(media){
@@ -212,17 +271,10 @@
         });
     }
 
-    async function importCollectionViaApi(collectionName){
+    async function importCollectionViaApi(collectionName, labelIds){
         console.log("[instagram.js] Starting collection API import...");        
         const urlMatch = window.location.pathname.match(/\/saved\/[^/]+\/(\d+)\/?$/);
         const collectionId = urlMatch ? urlMatch[1] : null;        
-        const csrfToken = document.cookie
-            .split("; ")
-            .find((c) => c.startsWith("csrftoken="))
-            ?.split("=")?.[1] || "";
-        const appId = window.__additionalData?.["app_id"] 
-            || document.querySelector("meta[property='al:ios:app_store_id']")?.content
-            || "936619743392459";
 
         let maxId = null;
         let totalCaptured = 0;
@@ -236,12 +288,7 @@
             : `/api/v1/feed/saved/posts/?num_results=21${maxId ? `&max_id=${maxId}` : ""}`;
             try {
             const response = await fetch(`https://www.instagram.com${endpoint}`, {
-                headers: {
-                "X-CSRFToken": csrfToken,
-                "X-IG-App-ID": appId,
-                "X-Requested-With": "XMLHttpRequest",
-                "Referer": window.location.href,
-                },
+                headers: getInstagramHeaders(),
                 credentials: "include",
             });
 
@@ -263,6 +310,7 @@
                 const post = extractPostFromMedia(media);
                 if (!post) continue;
                 if (collectionName && !/^\d+$/.test(collectionName)) post.raw.collectionName = collectionName;
+                post.labelIds = Array.isArray(labelIds) ? labelIds : [];
                 sendCapture(post);
                 totalCaptured++;
             }
@@ -297,7 +345,7 @@
     chrome.runtime.onMessage.addListener((msg) => {
         console.log("[SaveNet] instagram.js received message:", msg.type);
         if (msg.type === "start_collection_import") {
-            importCollectionViaApi(msg.collectionName);
+            importCollectionViaApi(msg.collectionName, msg.labelIds);
         }
     });
 
