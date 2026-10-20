@@ -105,7 +105,7 @@ async function renderLog(){
   const { log } = (await sendMessage({ type: "get_capture_log" })) || {};
   const logEl = document.getElementById("log");
   if (!log || log.length === 0){
-    logEl.innerHTML = '<div class="hint">No saves yet. Bookmark a post on Instagram or X first.</div>';
+    logEl.innerHTML = '<div class="hint">No saves yet. Bookmark a post on Instagram, X, or save a reading list/browser bookmark item first.</div>';
     return;
   }
 

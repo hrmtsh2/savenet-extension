@@ -287,51 +287,51 @@
             ? `/api/v1/feed/collection/${collectionId}/posts/?count=21${maxId ? `&max_id=${maxId}` : ""}`
             : `/api/v1/feed/saved/posts/?num_results=21${maxId ? `&max_id=${maxId}` : ""}`;
             try {
-            const response = await fetch(`https://www.instagram.com${endpoint}`, {
-                headers: getInstagramHeaders(),
-                credentials: "include",
-            });
+                const response = await fetch(`https://www.instagram.com${endpoint}`, {
+                    headers: getInstagramHeaders(),
+                    credentials: "include",
+                });
 
-            if (!response.ok) {
-                log(`Collection API returned ${response.status} — stopping import`);
-                break;
-            }
+                if (!response.ok) {
+                    log(`Collection API returned ${response.status} — stopping import`);
+                    break;
+                }
 
-            const data = await response.json();
-            const items = data?.items || [];
-            // prefer the api's human-readable name over a numeric url segment
-            const apiCollectionName = data?.collection?.name || data?.collection_name || data?.collection?.collection_name;
-            if (typeof apiCollectionName === "string" && apiCollectionName.trim()) {
-                collectionName = apiCollectionName.trim();
-            }
+                const data = await response.json();
+                const items = data?.items || [];
+                // prefer the api's human-readable name over a numeric url segment
+                const apiCollectionName = data?.collection?.name || data?.collection_name || data?.collection?.collection_name;
+                if (typeof apiCollectionName === "string" && apiCollectionName.trim()) {
+                    collectionName = apiCollectionName.trim();
+                }
 
-            for (const item of items) {
-                const media = item.media || item;
-                const post = extractPostFromMedia(media);
-                if (!post) continue;
-                if (collectionName && !/^\d+$/.test(collectionName)) post.raw.collectionName = collectionName;
-                post.labelIds = Array.isArray(labelIds) ? labelIds : [];
-                sendCapture(post);
-                totalCaptured++;
-            }
+                for (const item of items) {
+                    const media = item.media || item;
+                    const post = extractPostFromMedia(media);
+                    if (!post) continue;
+                    if (collectionName && !/^\d+$/.test(collectionName)) post.raw.collectionName = collectionName;
+                    post.labelIds = Array.isArray(labelIds) ? labelIds : [];
+                    sendCapture(post);
+                    totalCaptured++;
+                }
 
-            log(`Page ${pageCount}: captured ${items.length} posts (${totalCaptured} total)`);
-            
-            chrome.runtime.sendMessage({
-                type: "collection_import_progress",
-                count: totalCaptured,
-            });
+                log(`Page ${pageCount}: captured ${items.length} posts (${totalCaptured} total)`);
+                
+                chrome.runtime.sendMessage({
+                    type: "collection_import_progress",
+                    count: totalCaptured,
+                });
 
-            hasMore = data?.more_available && items.length > 0;
-            maxId = data?.next_max_id || null;
+                hasMore = data?.more_available && items.length > 0;
+                maxId = data?.next_max_id || null;
 
-            if (hasMore) {
-                await new Promise((r) => setTimeout(r, 1000));
-            }
+                if (hasMore) {
+                    await new Promise((r) => setTimeout(r, 1000));
+                }
 
             } catch (err) {
-            log("Collection API error:", err.message);
-            break;
+                log("Collection API error:", err.message);
+                break;
             }
         }
 
