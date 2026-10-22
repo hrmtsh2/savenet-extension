@@ -8,6 +8,24 @@ const cognitoDomain = "https://ap-south-1gevfg0ops.auth.ap-south-1.amazoncognito
 const clientId = "52gkrui2tsdvgi7l27ojeh18oh";
 const redirectUri = `https://kmbfnbpogmgfmlohnajkpmeicocpedof.chromiumapp.org`;
 const scopes = "openid email profile"
+let popupOpen = false;
+
+chrome.runtime.onConnect.addListener((port) => {
+    if (port.name !== "savenet-popup") return;
+    popupOpen = true;
+    port.onDisconnect.addListener(() => {
+        popupOpen = false;
+    });
+});
+
+async function openPopupForCapture(){
+    if (popupOpen || !chrome.action?.openPopup) return;
+    try {
+        await chrome.action.openPopup();
+    } catch (err) {
+        console.log("[Savenet] could not open popup:", err?.message || err);
+    }
+}
 
 function base64UrlEncode(buffer){
     return btoa(String.fromCharCode(...new Uint8Array(buffer))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -196,6 +214,7 @@ async function postCapture(post){
 }
 
 async function handleCapture(post){
+    await openPopupForCapture();
     const labelledPost = await applyActiveLabels(post);
     const result = await postCapture(labelledPost);
 

@@ -1,3 +1,6 @@
+const popupPort = chrome.runtime.connect({ name: "savenet-popup" });
+window.addEventListener("unload", () => popupPort.disconnect(), { once: true });
+
 function sendMessage(msg, attempt = 0){
   return new Promise((resolve) => {
     chrome.runtime.sendMessage(msg, (response) => {
