@@ -169,8 +169,50 @@
         return normaliseText(clone.textContent || "");
     }
 
+    function normaliseImageUrl(value){
+        if (typeof value !== "string" || !/^https?:\/\//i.test(value)) return null;
+        return value;
+    }
+
+    function addImageCandidate(candidates, value){
+        const url = normaliseImageUrl(value);
+        if (url && !candidates.includes(url)) candidates.push(url);
+    }
+
+    function addSrcSetCandidates(candidates, srcset){
+        if (typeof srcset !== "string") return;
+        srcset.split(",").forEach((entry) => addImageCandidate(candidates, entry.trim().split(/\s+/)[0]));
+    }
+
+    function extractDomImageCandidates(scope){
+        const candidates = [];
+        (scope || document).querySelectorAll("img").forEach((image) => {
+            addImageCandidate(candidates, image.currentSrc);
+            addImageCandidate(candidates, image.getAttribute("src"));
+            addSrcSetCandidates(candidates, image.getAttribute("srcset"));
+        });
+        return candidates;
+    }
+
+    function extractMediaImageCandidates(media){
+        const candidates = [];
+        const addFromList = (items) => {
+            if (!Array.isArray(items)) return;
+            items.forEach((item) => addImageCandidate(candidates, item?.url || item?.src));
+        };
+        addFromList(media?.image_versions2?.candidates);
+        addFromList(media?.image_versions2?.additional_candidates);
+        addFromList(media?.display_resources);
+        addFromList(media?.carousel_media?.flatMap((item) => item?.image_versions2?.candidates || []));
+        addImageCandidate(candidates, media?.thumbnail_url);
+        addImageCandidate(candidates, media?.thumbnail_src);
+        addImageCandidate(candidates, media?.image_url);
+        return candidates;
+    }
+
     function buildPostFromDom(scope, permalink){
         const shortcode = extractShortcode(permalink);
+        const imageCandidates = extractDomImageCandidates(scope);
         let caption = parseCaptionFromJsonLd(scope) || parseCaptionFromMeta();
         if (!caption) {
             caption = extractCaptionFromListItem(findCaptionListItem(scope));
@@ -208,9 +250,14 @@
             caption,
             authorHandle,
             authorName,
-            thumbnailUrl: "",
+            thumbnailUrl: imageCandidates[0] || "",
             mediaType: permalink.startsWith("/reel/") ? "reel" : "post",
-            raw: { permalink, scopeText: scopeText.slice(0, 4000), fromDomFallback: true }
+            raw: {
+                permalink,
+                scopeText: scopeText.slice(0, 4000),
+                candidateImages: imageCandidates,
+                fromDomFallback: true
+            }
         });
     }
 
@@ -226,6 +273,10 @@
         const media = shortcode ? await fetchMediaByShortcode(shortcode) : null;
         const post = media ? extractPostFromMedia(media) : buildPostFromDom(scope, permalink);
         if (post && media) {
+            const mediaCandidates = Array.isArray(post.raw?.candidateImages) ? post.raw.candidateImages : [];
+            const candidateImages = [...new Set([...mediaCandidates, ...extractDomImageCandidates(scope)])];
+            if (!post.thumbnailUrl && candidateImages.length) post.thumbnailUrl = candidateImages[0];
+            post.raw.candidateImages = candidateImages;
             post.raw.fromMediaApi = true;
             post.raw.permalink = permalink;
         }
@@ -249,8 +300,8 @@
         const username = media.user?.username || "";
         const fullName = media.user?.full_name || "";
         const mediaType = media.media_type;
-        const candidates = media.image_versions2?.candidates || [];
-        const thumbnailUrl = candidates[1]?.url || candidates[0]?.url || "";
+        const candidates = extractMediaImageCandidates(media);
+        const thumbnailUrl = candidates[1] || candidates[0] || "";
         const locationName = media.location?.name || "";
         const captionText = normaliseText(caption);
 
@@ -266,6 +317,7 @@
             raw: {
                 permalink: `/p/${code}`,
                 scopeText: normaliseText(caption + (locationName ? ` ${locationName}`: "")),
+                candidateImages: candidates,
                 fromCollection: true
             }
         });
