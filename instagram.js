@@ -52,10 +52,17 @@
         if (!mediaId) return null;
 
         try {
-            const response = await fetch(`/api/v1/media/${mediaId}/info/`, {
-                headers: getInstagramHeaders(),
-                credentials: "include",
-            });
+            const headers = getInstagramHeaders();
+            const [response, commentsResponse] = await Promise.all([
+                fetch(`/api/v1/media/${mediaId}/info/`, {
+                    headers,
+                    credentials: "include",
+                }),
+                fetch(`/api/v1/media/${mediaId}/comments/?count=10`, {
+                    headers,
+                    credentials: "include",
+                }).catch(() => null),
+            ]);
             if (!response.ok) {
                 log(`Media API returned ${response.status} for ${shortcode}`);
                 return null;
@@ -63,7 +70,15 @@
             const data = await response.json();
             const media = data?.items?.[0] || data?.item || data?.media || null;
             if (!media || typeof media !== "object") return null;
-            return { ...media, code: media.code || media.shortcode || shortcode };
+            const commentsData = commentsResponse?.ok ? await commentsResponse.json() : null;
+            const comments = (commentsData?.comments || commentsData?.items || media?.preview_comments || [])
+                .map((comment) => ({
+                    author: comment?.user?.username || comment?.user?.full_name || "",
+                    text: normaliseText(comment?.text || comment?.content || ""),
+                }))
+                .filter((comment) => comment.text)
+                .slice(0, 10);
+            return { ...media, code: media.code || media.shortcode || shortcode, comments };
         } catch (err) {
             log("Media API error:", err?.message || err);
             return null;
@@ -210,6 +225,16 @@
         return candidates;
     }
 
+    function extractMediaVideoUrl(media){
+        const candidates = [
+            ...(Array.isArray(media?.video_versions) ? media.video_versions : []),
+            ...(Array.isArray(media?.video_dash_manifest) ? media.video_dash_manifest : []),
+        ];
+        return candidates
+            .map((item) => item?.url || item?.src)
+            .find((url) => normaliseImageUrl(url));
+    }
+
     function buildPostFromDom(scope, permalink){
         const shortcode = extractShortcode(permalink);
         const imageCandidates = extractDomImageCandidates(scope);
@@ -304,6 +329,9 @@
         const thumbnailUrl = candidates[1] || candidates[0] || "";
         const locationName = media.location?.name || "";
         const captionText = normaliseText(caption);
+        const comments = Array.isArray(media.comments) ? media.comments : [];
+        const commentText = comments.map((comment) => `${comment.author ? `@${comment.author}: ` : ""}${comment.text}`).join(" ");
+        const videoUrl = extractMediaVideoUrl(media);
 
         return makePost({
             platform: "instagram",
@@ -316,8 +344,10 @@
             mediaType: mediaType === 2 ? "reel" : mediaType === 8 ? "carousel" : "post",
             raw: {
                 permalink: `/p/${code}`,
-                scopeText: normaliseText(caption + (locationName ? ` ${locationName}`: "")),
+                scopeText: normaliseText(caption + (locationName ? ` ${locationName}`: "") + (commentText ? ` ${commentText}` : "")),
                 candidateImages: candidates,
+                comments,
+                ...(videoUrl ? { videoUrl } : {}),
                 fromCollection: true
             }
         });
