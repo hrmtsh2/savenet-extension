@@ -1,5 +1,6 @@
 const popupPort = chrome.runtime.connect({ name: "savenet-popup" });
 window.addEventListener("unload", () => popupPort.disconnect(), { once: true });
+let currentCollectionName = "";
 
 function sendMessage(msg, attempt = 0){
   return new Promise((resolve) => {
@@ -32,11 +33,11 @@ async function render(){
     loggedOutEl.style.display = "none";
     loggedInEl.style.display = "flex";
     document.getElementById("user-email").textContent = auth.email || "";
+    await checkCollectionPage();
     await renderLabels();
     await loadBookmarkFolders();
     await renderQueueStatus();
     await renderLog();
-    await checkCollectionPage();
   } else {
     loggedOutEl.style.display = "flex";
     loggedInEl.style.display = "none";
@@ -66,12 +67,12 @@ async function renderLabels(){
 
   if (!labels.length){
     optionsEl.innerHTML = '<span class="hint">No personal labels yet. Create one in the web app, then reopen this menu.</span>';
-    summaryEl.textContent = "No custom labels";
+    summaryEl.textContent = currentCollectionName || "No custom labels";
     return;
   }
 
   const activeNames = labels.filter((label) => activeLabelIds.has(label.id)).map((label) => label.name);
-  summaryEl.textContent = activeNames.length ? activeNames.join(", ") : "No labels selected";
+  summaryEl.textContent = currentCollectionName || (activeNames.length ? activeNames.join(", ") : "No labels selected");
   optionsEl.innerHTML = "";
   labels.forEach((label) => {
     const option = document.createElement("label");
@@ -132,8 +133,10 @@ async function checkCollectionPage(){
   if (result.isCollection){
     sectionEl.style.display = "block";
     const name = result.collectionName || "saved posts";
-    labelEl.textContent = `Import "${name}`;
+    currentCollectionName = name;
+    labelEl.textContent = `Import "${name}"`;
   } else {
+    currentCollectionName = "";
     sectionEl.style.display = "none";
   }
 }
