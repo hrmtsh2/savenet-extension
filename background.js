@@ -239,9 +239,13 @@ async function handleCapture(post){
 async function flushQueue(){
     const queue = await getQueue();
     if (queue.length === 0) return { flushed: 0, remaining: 0 };
-    const remaining = [];
+    const remaining = queue.slice();
+    const total = queue.length;
     let flushed = 0;
+    let processed = 0;
     for (const post of queue){
+        const index = remaining.indexOf(post);
+        if (index !== -1) remaining.splice(index, 1);
         const result = await postCapture(post);
         if (result.ok){
             flushed += 1;
@@ -257,9 +261,17 @@ async function flushQueue(){
         } else {
             remaining.push(post);
         }
+        processed += 1;
+        await setQueue(remaining);
+        chrome.runtime.sendMessage({
+            type: "flush_queue_progress",
+            total,
+            processed,
+            flushed,
+            remaining: remaining.length,
+        }).catch(() => {});
     }
 
-    await setQueue(remaining);
     return { flushed, remaining: remaining.length };
 }
 
@@ -426,13 +438,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     if (msg.type === "collection_import_progress"){
-        chrome.runtime.sendMessage({ type: "collection_import_progress", count: msg.count }).catch(() => {});
+        chrome.runtime.sendMessage({
+            type: "collection_import_progress",
+            count: msg.count,
+            total: msg.total,
+        }).catch(() => {});
         sendResponse({ ok: true });
         return true;
     }
 
     if (msg.type === "collection_import_complete"){
-        chrome.runtime.sendMessage({ type: "collection_import_complete", count: msg.count }).catch(() => {});
+        chrome.runtime.sendMessage({
+            type: "collection_import_complete",
+            count: msg.count,
+            total: msg.total,
+        }).catch(() => {});
         sendResponse({ ok: true });
         return true;
     }

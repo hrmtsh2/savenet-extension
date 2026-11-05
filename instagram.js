@@ -3,6 +3,12 @@
     const postLinkSelector = 'a[href*="/p/"], a[href*="/reel/"]';
     const postPermalinkPattern = /^\/(p|reel)\/[^/?#]+\/?$/i
     const saveSelector = '[aria-label="Save"]';
+    const categorySaveContext = {
+        target: null,
+        scope: null,
+        expiresAt: 0,
+        captured: false,
+    };
     
     function normalisePermalink(href){
         if (!href) return null;
@@ -286,7 +292,53 @@
         });
     }
 
-    async function handleSaveClick(target){
+    function normaliseCategoryName(value){
+        return normaliseText(value)
+            .replace(/^(saved|added|removed)\s+(to|from|in)\s+/i, "")
+            .replace(/^["']|["']$/g, "")
+            .trim();
+    }
+
+    function categoryNameFromText(value){
+        const text = normaliseText(value);
+        const match = text.match(/(?:saved|added|save)\s+(?:to|in)\s+["“]?(.+?)["”]?(?:\s*$|\.)/i);
+        return match ? normaliseCategoryName(match[1]) : "";
+    }
+
+    function isGenericCategoryControl(name){
+        return !name
+            || /^(save|saved|save to|new collection|create collection|cancel|close)$/i.test(name)
+            || name.length > 120;
+    }
+
+    function categoryNameFromElement(target){
+        const candidate = target.closest('[role="menuitem"], [role="option"], li, button');
+        const rawName = candidate?.getAttribute("aria-label")
+            || candidate?.getAttribute("title")
+            || candidate?.textContent
+            || target.textContent
+            || "";
+        const name = categoryNameFromText(rawName) || normaliseCategoryName(rawName);
+        return isGenericCategoryControl(name) ? "" : name;
+    }
+
+    function recentToastCategoryName(){
+        const nodes = Array.from(document.querySelectorAll('[role="alert"], [aria-live], [class*="toast" i]'));
+        for (const node of nodes.reverse()){
+            const name = categoryNameFromText(node.textContent || "");
+            if (name && !isGenericCategoryControl(name)) return name;
+        }
+        return "";
+    }
+
+    function setCategorySaveContext(target){
+        categorySaveContext.target = target;
+        categorySaveContext.scope = findScope(target);
+        categorySaveContext.expiresAt = Date.now() + 5000;
+        categorySaveContext.captured = false;
+    }
+
+    async function handleSaveClick(target, categoryName = ""){
         const scope = findScope(target);
         const permalink = findPermalinkInScope(scope) || normalisePermalink(window.location.pathname);
         if (!permalink){
@@ -306,17 +358,54 @@
             post.raw.permalink = permalink;
         }
         if (!post) return;
+        if (categoryName) {
+            post.raw = { ...(post.raw || {}), collectionName: categoryName };
+        }
         sendCapture(post);
         log(`Captured save via ${media ? "media API" : "DOM fallback"}:`, post.postUrl);
+    }
+
+    function captureCategorySave(categoryName){
+        if (!categoryName || Date.now() > categorySaveContext.expiresAt || categorySaveContext.captured) return;
+        const target = categorySaveContext.target;
+        if (!(target instanceof Element)) return;
+        categorySaveContext.captured = true;
+        void handleSaveClick(target, categoryName);
     }
 
     document.addEventListener("click", (event) => {
         const target = event.target;
         if (!(target instanceof Element)) return;
         const saveEl = target.closest(saveSelector);
-        if (!saveEl) return;
-        void handleSaveClick(saveEl);
+        if (saveEl) {
+            setCategorySaveContext(saveEl);
+            categorySaveContext.captured = true;
+            void handleSaveClick(saveEl);
+            return;
+        }
+        if (categorySaveContext.target && Date.now() <= categorySaveContext.expiresAt) {
+            captureCategorySave(categoryNameFromElement(target) || recentToastCategoryName());
+        }
     }, true);
+
+    document.addEventListener("pointerover", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        const saveEl = target.closest(saveSelector);
+        if (saveEl) setCategorySaveContext(saveEl);
+    }, true);
+
+    const toastObserver = new MutationObserver((mutations) => {
+        if (!categorySaveContext.target || Date.now() > categorySaveContext.expiresAt) return;
+        for (const mutation of mutations){
+            for (const node of mutation.addedNodes){
+                if (!(node instanceof Element)) continue;
+                captureCategorySave(categoryNameFromText(node.textContent || ""));
+                if (categorySaveContext.captured) return;
+            }
+        }
+    });
+    toastObserver.observe(document.body, { childList: true, subtree: true });
 
     function extractPostFromMedia(media){
         const code = media.code || media.shortcode;
@@ -360,6 +449,7 @@
 
         let maxId = null;
         let totalCaptured = 0;
+        let collectionTotal = null;
         let hasMore = true;
         let pageCount = 0;
 
@@ -381,6 +471,16 @@
 
                 const data = await response.json();
                 const items = data?.items || [];
+                const reportedTotal = Number(
+                    data?.collection?.media_count ??
+                    data?.collection?.count ??
+                    data?.collection?.post_count ??
+                    data?.total_count ??
+                    data?.count
+                );
+                if (Number.isInteger(reportedTotal) && reportedTotal >= 0) {
+                    collectionTotal = reportedTotal;
+                }
                 // prefer the api's human-readable name over a numeric url segment
                 const apiCollectionName = data?.collection?.name || data?.collection_name || data?.collection?.collection_name;
                 if (typeof apiCollectionName === "string" && apiCollectionName.trim()) {
@@ -402,6 +502,7 @@
                 chrome.runtime.sendMessage({
                     type: "collection_import_progress",
                     count: totalCaptured,
+                    total: collectionTotal,
                 });
 
                 hasMore = data?.more_available && items.length > 0;
@@ -421,6 +522,7 @@
         chrome.runtime.sendMessage({
             type: "collection_import_complete",
             count: totalCaptured,
+            total: collectionTotal,
         });
     }
 

@@ -163,10 +163,22 @@ document.getElementById("btn-logout").addEventListener("click", async () => {
 
 document.getElementById("btn-flush").addEventListener("click", async () => {
   const btn = document.getElementById("btn-flush");
+  const progressEl = document.getElementById("retry-progress");
+  const progressFillEl = document.getElementById("retry-progress-fill");
+  const progressLabelEl = document.getElementById("retry-progress-label");
   btn.textContent = "Retrying...";
   btn.disabled = true;
-  await sendMessage({ type: "flush_queue" });
-  btn.textContent = "Retry failed."
+  progressEl.style.display = "block";
+  progressFillEl.style.width = "0%";
+  progressLabelEl.textContent = "Retrying queued saves...";
+  const result = await sendMessage({ type: "flush_queue" });
+  if (result?.remaining === 0) {
+    progressFillEl.style.width = "100%";
+    progressLabelEl.textContent = `${result.flushed} save${result.flushed === 1 ? "" : "s"} retried successfully.`;
+  } else {
+    progressLabelEl.textContent = `${result?.remaining || 0} save${result?.remaining === 1 ? "" : "s"} still pending retry.`;
+  }
+  btn.textContent = "Retry failed";
   btn.disabled = false;
   await renderQueueStatus();
   await renderLog();
@@ -236,24 +248,65 @@ document.getElementById("btn-import-reading-list").addEventListener("click", asy
 document.getElementById("btn-import-collection").addEventListener("click", async () => {
   const btn = document.getElementById("btn-import-collection");
   const statusEl = document.getElementById("collection-import-status");
+  const progressEl = document.getElementById("collection-progress");
+  const progressFillEl = document.getElementById("collection-progress-fill");
   btn.disabled = true;
   btn.textContent = "Importing...";
   statusEl.textContent = "Starting...";
+  progressEl.style.display = "block";
+  progressFillEl.style.width = "0%";
   await sendMessage({ type: "start_collection_import"});
 });
 
 chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type === "flush_queue_progress"){
+    const retryBtn = document.getElementById("btn-flush");
+    const progressEl = document.getElementById("retry-progress");
+    const progressFillEl = document.getElementById("retry-progress-fill");
+    const progressLabelEl = document.getElementById("retry-progress-label");
+    retryBtn.disabled = true;
+    const percent = msg.total > 0 ? Math.round((msg.processed / msg.total) * 100) : 100;
+    progressEl.style.display = "block";
+    progressFillEl.style.width = `${percent}%`;
+    progressLabelEl.textContent = `${msg.remaining} save${msg.remaining === 1 ? "" : "s"} remaining; ${msg.flushed} succeeded.`;
+    const countEl = document.getElementById("queue-count");
+    if (msg.remaining > 0) {
+      countEl.textContent = `${msg.remaining} save${msg.remaining === 1 ? "" : "s"} pending retry.`;
+    } else {
+      countEl.textContent = "";
+      retryBtn.style.display = "none";
+    }
+  }
+
   if (msg.type === "collection_import_progress"){
     const statusEl = document.getElementById("collection-import-status");
     const btn = document.getElementById("btn-import-collection");
-    if (statusEl) statusEl.textContent = `${msg.count} posts captured so far...`;
+    const progressEl = document.getElementById("collection-progress");
+    const progressFillEl = document.getElementById("collection-progress-fill");
+    if (statusEl) {
+      statusEl.textContent = Number.isInteger(msg.total)
+        ? `${msg.count} posts captured out of ${msg.total} in collection...`
+        : `${msg.count} posts captured in collection...`;
+    }
     if (btn) btn.textContent = "Importing...";
+    if (progressEl) progressEl.style.display = "block";
+    if (progressFillEl && Number.isInteger(msg.total) && msg.total > 0) {
+      progressFillEl.style.width = `${Math.min(100, Math.round((msg.count / msg.total) * 100))}%`;
+    }
   }
   
   if (msg.type === "collection_import_complete"){
     const statusEl = document.getElementById("collection-import-status");
     const btn = document.getElementById("btn-import-collection");
-    if (statusEl) statusEl.textContent = `Done. ${msg.count} posts imported.`;
+    const progressEl = document.getElementById("collection-progress");
+    const progressFillEl = document.getElementById("collection-progress-fill");
+    if (statusEl) {
+      statusEl.textContent = Number.isInteger(msg.total)
+        ? `Done. ${msg.count} posts captured out of ${msg.total} in collection.`
+        : `Done. ${msg.count} posts captured in collection.`;
+    }
+    if (progressEl) progressEl.style.display = "block";
+    if (progressFillEl) progressFillEl.style.width = "100%";
     if (btn){
       btn.textContent = "Import all posts";
       btn.disabled = false;

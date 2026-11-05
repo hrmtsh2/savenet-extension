@@ -108,6 +108,41 @@
     margin-top: 2px;
   }
   .hint { font-size: 11px; color: #999; margin-top: 4px; }
+  .retry-progress {
+    display: none;
+    flex-basis: 100%;
+    width: 100%;
+    padding-top: 6px;
+  }
+  .retry-progress-bar {
+    height: 6px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #e5e7eb;
+  }
+  .retry-progress-fill {
+    height: 100%;
+    width: 0;
+    background: #0066cc;
+    transition: width 150ms ease;
+  }
+  .collection-progress {
+    display: none;
+    width: 100%;
+    padding-top: 6px;
+  }
+  .collection-progress-bar {
+    height: 6px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #e5e7eb;
+  }
+  .collection-progress-fill {
+    height: 100%;
+    width: 0;
+    background: #0066cc;
+    transition: width 150ms ease;
+  }
   button {
     padding: 7px 14px;
     font-size: 12px;
@@ -139,6 +174,7 @@
   }
   .queue-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
   }
@@ -237,6 +273,10 @@
     <div class="queue-row">
       <span class="queue-count" id="queue-count"></span>
       <button class="btn-ghost" id="btn-flush" style="display:none">Retry failed</button>
+      <div class="retry-progress" id="retry-progress">
+        <div class="retry-progress-bar"><div class="retry-progress-fill" id="retry-progress-fill"></div></div>
+        <div class="hint" id="retry-progress-label"></div>
+      </div>
     </div>
 
     <div class="log-section">
@@ -277,6 +317,9 @@
       <div class="import-row">
         <span class="queue-count" id="collection-import-status">Ready to import</span>
         <button class="btn-ghost" id="btn-import-collection">Import all posts</button>
+      </div>
+      <div class="collection-progress" id="collection-progress">
+        <div class="collection-progress-bar"><div class="collection-progress-fill" id="collection-progress-fill"></div></div>
       </div>
       <div class="hint">Scroll through your saved collection. SaveNet captures each page automatically.</div>
     </div>
