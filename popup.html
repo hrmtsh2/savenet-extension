@@ -5,42 +5,65 @@
 <title>SaveNet</title>
 <style>
   body {
-    font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-    width: 300px;
-    padding: 16px;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    width: 340px;
+    padding: 0;
     font-size: 13px;
-    color: #1a1a1a;
+    color: #26333b;
+    background: #fcfbf7;
     margin: 0;
   }
   .header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 16px;
+    gap: 10px;
+    padding: 16px 18px;
+    color: #fff;
+    background: #4f46b5;
+    border-bottom: 1px solid rgba(255,255,255,.15);
+  }
+  .brand-mark {
+    display: flex;
+    width: 32px;
+    height: 32px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    background: rgba(255,255,255,.16);
+  }
+  .brand-mark svg { width: 23px; height: 23px; }
+  .brand-copy { display: flex; flex-direction: column; gap: 1px; }
+  .brand-copy span {
+    color: #c9c7f7;
+    font-size: 10px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
   }
   .header h1 {
-    font-size: 15px;
+    font-size: 17px;
     margin: 0;
-    font-weight: 600;
+    font-weight: 650;
+    letter-spacing: -.02em;
   }
+  #logged-out, #logged-in { padding: 18px; }
   .logged-out {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 14px;
     align-items: center;
-    padding: 8px 0;
+    padding: 28px 18px 24px;
     text-align: center;
   }
   .logged-out p {
-    color: #666;
+    color: #66727a;
     font-size: 12px;
     margin: 0;
-    line-height: 1.5;
+    line-height: 1.6;
   }
   .logged-in {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 14px;
   }
   .user-row {
     display: flex;
@@ -50,26 +73,27 @@
   }
   .user-email {
     font-size: 11px;
-    color: #666;
+    color: #66727a;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .message {
     font-size: 12px;
-    color: #444;
+    color: #52616a;
     line-height: 1.6;
+    margin: 0;
   }
   .message a {
-    color: #0066cc;
+    color: #398f9b;
     text-decoration: none;
     font-weight: 500;
   }
   .message a:hover { text-decoration: underline; }
   .divider {
     border: none;
-    border-top: 1px solid #eee;
-    margin: 4px 0;
+    border-top: 1px solid #e8e5dc;
+    margin: 1px 0;
   }
   .log-section { font-size: 11px; }
   .log-header {
@@ -78,10 +102,10 @@
     justify-content: space-between;
     margin-bottom: 6px;
   }
-  .log-header span { font-weight: 600; color: #333; }
+  .log-header span { font-weight: 650; color: #34434c; }
   .log-item {
     padding: 5px 0;
-    border-bottom: 1px solid #f0f0f0;
+    border-bottom: 1px solid #eeeae2;
     font-size: 11px;
   }
   .log-item:last-child { border-bottom: none; }
@@ -89,7 +113,7 @@
     font-weight: 600;
     text-transform: uppercase;
     font-size: 10px;
-    color: #888;
+    color: #78838a;
   }
   .log-status {
     float: right;
@@ -97,17 +121,17 @@
     padding: 1px 5px;
     border-radius: 3px;
   }
-  .log-status.sent { background: #d1f0d8; color: #1b5e20; }
-  .log-status.queued { background: #fde3cf; color: #8a4b00; }
-  .log-status.not_logged_in { background: #eee; color: #666; }
+  .log-status.sent { background: #dff3ed; color: #287267; }
+  .log-status.queued { background: #fff0d9; color: #9a641d; }
+  .log-status.not_logged_in { background: #eeeae2; color: #68747b; }
   .log-url {
-    color: #0066cc;
+    color: #398f9b;
     text-decoration: none;
     word-break: break-all;
     display: block;
     margin-top: 2px;
   }
-  .hint { font-size: 11px; color: #999; margin-top: 4px; }
+  .hint { font-size: 11px; color: #869097; margin-top: 4px; line-height: 1.45; }
   .retry-progress {
     display: none;
     flex-basis: 100%;
@@ -118,12 +142,12 @@
     height: 6px;
     overflow: hidden;
     border-radius: 999px;
-    background: #e5e7eb;
+    background: #e6e5df;
   }
   .retry-progress-fill {
     height: 100%;
     width: 0;
-    background: #0066cc;
+    background: #398f9b;
     transition: width 150ms ease;
   }
   .collection-progress {
@@ -135,39 +159,40 @@
     height: 6px;
     overflow: hidden;
     border-radius: 999px;
-    background: #e5e7eb;
+    background: #e6e5df;
   }
   .collection-progress-fill {
     height: 100%;
     width: 0;
-    background: #0066cc;
+    background: #398f9b;
     transition: width 150ms ease;
   }
   button {
-    padding: 7px 14px;
+    padding: 8px 13px;
     font-size: 12px;
-    border-radius: 6px;
-    border: none;
+    border-radius: 8px;
+    border: 1px solid transparent;
     cursor: pointer;
-    font-weight: 500;
+    font-weight: 600;
+    transition: background .15s, border-color .15s, color .15s;
   }
   .btn-primary {
-    background: #0066cc;
+    background: #398f9b;
     color: white;
     width: 100%;
   }
-  .btn-primary:hover { background: #0052a3; }
+  .btn-primary:hover { background: #2f7c86; }
   .btn-ghost {
-    background: transparent;
-    color: #666;
-    border: 1px solid #ddd;
+    background: #fff;
+    color: #52616a;
+    border: 1px solid #dcd9d0;
     font-size: 11px;
-    padding: 4px 8px;
+    padding: 6px 10px;
   }
-  .btn-ghost:hover { background: #f5f5f5; }
+  .btn-ghost:hover { background: #f2f7f5; border-color: #9bc7c3; color: #287267; }
   .btn-link {
     background: transparent;
-    color: #999;
+    color: #7d898f;
     font-size: 10px;
     padding: 2px 4px;
     text-decoration: underline;
@@ -178,7 +203,7 @@
     align-items: center;
     justify-content: space-between;
   }
-  .queue-count { font-size: 11px; color: #666; }
+  .queue-count { font-size: 11px; color: #66747b; }
   .import-section { font-size: 12px; }
   .import-row {
     display: flex;
@@ -192,18 +217,19 @@
     font-size: 11px;
     padding: 4px 6px;
     border-radius: 4px;
-    border: 1px solid #ddd;
-    background: white;
-    color: #333;
+    border: 1px solid #dcd9d0;
+    background: #fff;
+    color: #34434c;
     min-width: 0;
   }
   .label-picker {
-    border: 1px solid #ddd;
-    border-radius: 6px;
+    border: 1px solid #dcd9d0;
+    border-radius: 9px;
+    background: #fff;
   }
   .label-picker summary {
     cursor: pointer;
-    padding: 7px 9px;
+    padding: 9px 10px;
     font-size: 12px;
     font-weight: 500;
   }
@@ -213,14 +239,14 @@
     flex-direction: column;
     gap: 6px;
     overflow-y: auto;
-    border-top: 1px solid #eee;
+    border-top: 1px solid #eeeae2;
     padding: 8px 9px;
   }
   .label-option {
     display: flex;
     align-items: center;
     gap: 7px;
-    color: #444;
+    color: #52616a;
     font-size: 12px;
   }
   .loading-ellipsis span {
@@ -236,7 +262,17 @@
 </head>
 <body>
   <div class="header">
-    <h1>SaveNet</h1>
+    <div class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+        <path d="M6 3h20q3 0 3 3v23l-13-8L3 29V6q0-3 3-3Z" fill="rgba(255,255,255,.25)" />
+        <path d="M6 3h20q3 0 3 3v7H3V6q0-3 3-3Z" fill="rgba(255,255,255,.45)" />
+        <path d="m23 6-6 6m0-6 6 6m-3-3h6m-6 0h-6" fill="none" stroke="#fff" stroke-linecap="round" stroke-width="1.6" />
+      </svg>
+    </div>
+    <div class="brand-copy">
+      <h1>SaveNet</h1>
+      <span>Save smarter, find faster</span>
+    </div>
   </div>
 
   <div id="logged-out" class="logged-out" style="display:none">
