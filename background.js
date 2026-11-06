@@ -8,7 +8,9 @@ const cognitoDomain = "https://ap-south-1gevfg0ops.auth.ap-south-1.amazoncognito
 const clientId = "52gkrui2tsdvgi7l27ojeh18oh";
 const redirectUri = `https://kmbfnbpogmgfmlohnajkpmeicocpedof.chromiumapp.org`;
 const scopes = "openid email profile"
+const labelsCacheTtlMs = 5 * 60 * 1000;
 let popupOpen = false;
+let labelsRefreshPromise = null;
 
 chrome.runtime.onConnect.addListener((port) => {
     if (port.name !== "savenet-popup") return;
@@ -71,7 +73,7 @@ async function applyActiveLabels(post){
     return { ...post, labelIds };
 }
 
-async function getAvailableLabels(){
+async function getAvailableLabelsFromServer(){
     const config = await getConfig();
     if (!config.token) return { ok: false, error: "Not logged in", labels: [], activeLabelIds: [] };
 
@@ -81,10 +83,11 @@ async function getAvailableLabels(){
         });
         if (!response.ok) throw new Error(`http_${response.status}`);
         const data = await response.json();
+        const latestConfig = await getConfig();
         const labels = Array.isArray(data.labels) ? data.labels.filter((label) => Number.isInteger(label?.id) && typeof label?.name === "string") : [];
         const validIds = new Set(labels.map((label) => label.id));
-        const activeLabelIds = normaliseLabelIds(config.activeLabelIds).filter((id) => validIds.has(id));
-        await setConfig({ labels, activeLabelIds });
+        const activeLabelIds = normaliseLabelIds(latestConfig.activeLabelIds).filter((id) => validIds.has(id));
+        await setConfig({ labels, activeLabelIds, labelsFetchedAt: Date.now() });
         return { ok: true, labels, activeLabelIds };
     } catch (err) {
         return {
@@ -94,6 +97,34 @@ async function getAvailableLabels(){
             activeLabelIds: normaliseLabelIds(config.activeLabelIds)
         };
     }
+}
+
+async function getAvailableLabels(){
+    const config = await getConfig();
+    if (!config.token) return { ok: false, error: "Not logged in", labels: [], activeLabelIds: [] };
+
+    const labels = Array.isArray(config.labels) ? config.labels : [];
+    const cachedResult = {
+        ok: true,
+        labels,
+        activeLabelIds: normaliseLabelIds(config.activeLabelIds)
+    };
+    const cacheAge = Date.now() - Number(config.labelsFetchedAt || 0);
+    if (Number(config.labelsFetchedAt || 0) > 0 && cacheAge < labelsCacheTtlMs) return cachedResult;
+    if (labels.length > 0) {
+        if (!labelsRefreshPromise) {
+            labelsRefreshPromise = getAvailableLabelsFromServer().finally(() => {
+                labelsRefreshPromise = null;
+            });
+        }
+        return cachedResult;
+    }
+    if (!labelsRefreshPromise) {
+        labelsRefreshPromise = getAvailableLabelsFromServer().finally(() => {
+            labelsRefreshPromise = null;
+        });
+    }
+    return labelsRefreshPromise;
 }
 
 async function getQueue(){
@@ -492,7 +523,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         startCognitoLogout()
           .catch(() => {})
           .finally(() => {
-            setConfig({ token: null, email: null }).then(() => {
+            setConfig({ token: null, email: null, labels: [], activeLabelIds: [], labelsFetchedAt: 0 }).then(() => {
                 sendResponse({ ok: true })
             })
           })
