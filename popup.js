@@ -33,6 +33,7 @@ async function render(){
     loggedOutEl.style.display = "none";
     loggedInEl.style.display = "flex";
     document.getElementById("user-email").textContent = auth.email || "";
+    await sendMessage({ type: "track_analytics_event", event: "extension_popup_opened" });
     await checkCollectionPage();
     await renderLabels();
     await loadBookmarkFolders();

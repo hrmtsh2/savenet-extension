@@ -244,8 +244,29 @@ async function postCapture(post){
     }
 }
 
+async function trackAnalyticsEvent(event, properties = {}){
+    const config = await getConfig();
+    if (!config.token) return;
+    try {
+        await fetch(`${apiBase}/api/analytics/track`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${config.token}`
+            },
+            body: JSON.stringify({ event, properties })
+        });
+    } catch (err) {
+        console.log("[Savenet] analytics event failed:", err?.message || err);
+    }
+}
+
 async function handleCapture(post){
     await openPopupForCapture();
+    void trackAnalyticsEvent("extension_capture_started", {
+        platform: post.platform,
+        has_labels: Array.isArray(post.labelIds) && post.labelIds.length > 0,
+    });
     const labelledPost = await applyActiveLabels(post);
     const result = await postCapture(labelledPost);
 
@@ -534,6 +555,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         getConfig().then((config) => {
             sendResponse({ loggedIn: !!config.token, email: config.email || null });
         });
+        return true;
+    }
+
+    if (msg.type === "track_analytics_event"){
+        trackAnalyticsEvent(msg.event, msg.properties || {}).then(() => sendResponse({ ok: true }));
         return true;
     }
 
